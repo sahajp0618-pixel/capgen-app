@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CapGen - Parametric STL Generator</title>
+<meta name="description" content="Browser-based parametric cap generator with live 3D preview and STL export." />
+<link rel="stylesheet" href="./assets/css/app.css" />
+<script defer src="./assets/vendor/three.r128.min.js"></script>
+<script defer src="./assets/js/app.js"></script>
+</head>
+<body>
+<header>
+  <div class="logo" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M12 2l9 5v10l-9 5-9-5V7l9-5z" />
+      <path d="M12 2v20M3 7l9 5 9-5" opacity=".35" />
+    </svg>
+  </div>
+  <div class="header-text">
+    <h1>Cap<span>Gen</span></h1>
+    <p>// Production-Ready Static Deploy · Local Three.js · Browser STL Pipeline</p>
+  </div>
+  <div class="badge">Developed for Reliance Electronics</div>
+</header>
+
+<main>
+  <aside class="sidebar">
+    <section>
+      <p class="stitle">Dimensions</p>
+      <div class="frow">
+        <div class="field">
+          <label for="iW"><span class="lk">W</span>&nbsp;Width</label>
+          <div class="iw">
+            <input type="number" id="iW" value="30" min="5" max="500" step="0.5" />
+            <span class="iu">mm</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="iL"><span class="lk">L</span>&nbsp;Length</label>
+          <div class="iw">
+            <input type="number" id="iL" value="30" min="5" max="500" step="0.5" />
+            <span class="iu">mm</span>
+          </div>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="field">
+          <label for="iH"><span class="lk">H</span>&nbsp;Height</label>
+          <div class="iw">
+            <input type="number" id="iH" value="30" min="3" max="500" step="0.5" />
+            <span class="iu">mm</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="iT"><span class="lk">T</span>&nbsp;Tolerance</label>
+          <div class="iw">
+            <input type="number" id="iT" value="0.3" min="0" max="2" step="0.05" />
+            <span class="iu">mm</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="stitle">Fixed constants</p>
+      <div class="infobox">
+        <div class="prow"><span class="pk">Wall Thickness</span><span class="pv">1.0 mm</span></div>
+        <div class="prow"><span class="pk">Bottom Thickness</span><span class="pv">2.0 mm</span></div>
+        <div class="prow"><span class="pk">Sphere Diameter</span><span class="pv">2.032 mm</span></div>
+        <div class="prow"><span class="pk">Snap Radius</span><span class="pv">1.016 mm</span></div>
+        <div class="prow"><span class="pk">Curve Segments</span><span class="pv">22</span></div>
+      </div>
+    </section>
+
+    <section>
+      <p class="stitle">Derived values</p>
+      <div class="dbox">
+        <div class="drow"><span class="dk">Inner Width = W + T</span><span class="dv" id="d_iw">-</span></div>
+        <div class="drow"><span class="dk">Inner Length = L + T</span><span class="dv" id="d_il">-</span></div>
+        <div class="drow"><span class="dk">Outer Width</span><span class="dv" id="d_ow">-</span></div>
+        <div class="drow"><span class="dk">Outer Length</span><span class="dv" id="d_ol">-</span></div>
+        <div class="drow"><span class="dk">Outer Height</span><span class="dv" id="d_oh">-</span></div>
+        <div class="drow"><span class="dk">Snap Center Z</span><span class="dv" id="d_zc">-</span></div>
+        <div class="drow"><span class="dk">Rail Length</span><span class="dv" id="d_cl">-</span></div>
+      </div>
+    </section>
+
+    <section class="export-stack">
+      <p class="stitle">Export</p>
+      <div class="field">
+        <label for="iFilename"><span class="lk">↓</span>&nbsp;File name</label>
+        <div class="iw">
+          <input type="text" id="iFilename" value="cap" placeholder="cap" />
+          <span class="iu">.stl</span>
+        </div>
+      </div>
+
+      <button class="btn" id="pBtn" type="button">
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg id="pIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+        <span id="pLbl">Load Preview</span>
+      </button>
+
+      <button class="btn gold" id="dBtn" type="button">
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg id="dIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        <span id="dLbl">Download STL</span>
+      </button>
+
+      <div id="status" aria-live="polite"></div>
+    </section>
+  </aside>
+
+  <section class="rpane">
+    <div class="rtbar">
+      <div class="dot" id="dot"></div>
+      <span id="tbmsg">Waiting for Preview</span>
+      <span id="tbdim"></span>
+    </div>
+
+    <div class="viewport-tools">
+      <div class="viewcube-panel">
+        <p class="viewcube-title">View Cube</p>
+        <div class="viewcube-scene">
+          <div class="viewcube" id="viewCube" aria-label="View Cube">
+            <button class="cube-face face-top" type="button" data-view="top">Top</button>
+            <button class="cube-face face-bottom" type="button" data-view="bottom">Bottom</button>
+            <button class="cube-face face-front" type="button" data-view="front">Front</button>
+            <button class="cube-face face-back" type="button" data-view="back">Back</button>
+            <button class="cube-face face-left" type="button" data-view="left">Left</button>
+            <button class="cube-face face-right" type="button" data-view="right">Right</button>
+            <button class="cube-corner corner-tfr" type="button" data-view="corner-tfr" aria-label="Top Front Right View" title="Top Front Right"></button>
+            <button class="cube-corner corner-tfl" type="button" data-view="corner-tfl" aria-label="Top Front Left View" title="Top Front Left"></button>
+            <button class="cube-corner corner-tbr" type="button" data-view="corner-tbr" aria-label="Top Back Right View" title="Top Back Right"></button>
+            <button class="cube-corner corner-tbl" type="button" data-view="corner-tbl" aria-label="Top Back Left View" title="Top Back Left"></button>
+            <button class="cube-corner corner-bfr" type="button" data-view="corner-bfr" aria-label="Bottom Front Right View" title="Bottom Front Right"></button>
+            <button class="cube-corner corner-bfl" type="button" data-view="corner-bfl" aria-label="Bottom Front Left View" title="Bottom Front Left"></button>
+            <button class="cube-corner corner-bbr" type="button" data-view="corner-bbr" aria-label="Bottom Back Right View" title="Bottom Back Right"></button>
+            <button class="cube-corner corner-bbl" type="button" data-view="corner-bbl" aria-label="Bottom Back Left View" title="Bottom Back Left"></button>
+          </div>
+        </div>
+        <div class="viewcube-actions">
+          <button class="viewchip" id="homeBtn" type="button" data-view="home">Home</button>
+          <button class="viewchip" id="fitBtn" type="button" data-view="fit">Fit View</button>
+        </div>
+      </div>
+    </div>
+
+    <canvas id="cv"></canvas>
+
+    <div class="hint">
+      <span>Fusion-Style Navigation:</span>
+      <span>Shift + MMB: Orbit · MMB: Pan · Wheel: Zoom to Cursor</span>
+      <span>RMB or LMB Drag: Orbit · F: Fit View</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div>Engine: <span>Procedural Mesh Builder</span></div>
+  <div>Renderer: <span>Three.js r128 Local</span></div>
+  <div>Navigation: <span>CAD-Style Orbit Target + View Cube</span></div>
+  <div>Export: <span>Binary STL</span></div>
+</footer>
+</body>
+</html>
