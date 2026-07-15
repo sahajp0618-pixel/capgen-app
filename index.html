@@ -3,27 +3,443 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>CapGen - Parametric STL Generator</title>
+<title>CapGen – Parametric STL Generator</title>
 <meta name="description" content="Browser-based parametric cap generator with live 3D preview and STL export." />
-<link rel="stylesheet" href="./assets/css/app.css" />
-<script defer src="./assets/vendor/three.r128.min.js"></script>
-<script defer src="./assets/js/app.js"></script>
+<script src="./assets/vendor/three.r128.min.js"></script>
+<style>
+/* ============================================================
+   CapGen — "Grid & Grotesk"  ·  Swiss precision design system
+   Presentation layer only. Every JS-referenced id/class preserved.
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --paper:#E8E5DC;      /* app canvas (bone) */
+  --paper-2:#F4F2EB;    /* raised card */
+  --paper-3:#DED9CD;    /* inset / hover */
+  --ink:#15120C;        /* near-black */
+  --ink-2:#4A4438;      /* secondary ink */
+  --muted:#847B6C;      /* tertiary / labels */
+  --line:#15120C;       /* strong 1px rule */
+  --line-soft:rgba(21,18,12,.16);
+  --red:#D8232A;        /* Swiss red */
+  --red-2:#AE1720;      /* red hover/ink */
+  --green:#1C7A44;
+  --amber:#9A6B00;
+  --graphite:#121110;   /* 3D viewport */
+  --on-solid:#F4F2EB;   /* text on ink/red */
+  --sidebar-w:344px;
+  --sans:"Helvetica Neue",Helvetica,"Inter","Arial Nova",Arial,system-ui,sans-serif;
+  --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+html,body{height:100%;overflow:hidden;}
+body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+  font-size:13px;line-height:1.4;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;}
+::selection{background:var(--red);color:var(--on-solid);}
+*::-webkit-scrollbar{width:10px;height:10px;}
+*::-webkit-scrollbar-thumb{background:var(--paper-3);border:3px solid var(--paper);}
+*:hover::-webkit-scrollbar-thumb{background:var(--muted);}
+
+/* ── header ── */
+header{display:flex;align-items:stretch;gap:0;flex-shrink:0;background:var(--paper);
+  border-bottom:2px solid var(--ink);}
+.logo{display:grid;place-items:center;width:54px;flex-shrink:0;background:var(--ink);
+  border-right:1px solid var(--ink);}
+.logo svg{width:22px;height:22px;color:var(--on-solid);}
+.header-text{display:flex;flex-direction:column;justify-content:center;padding:9px 18px;flex:1;}
+.header-text h1{font-size:20px;font-weight:800;letter-spacing:-.6px;line-height:1;text-transform:uppercase;}
+.header-text h1 span{color:var(--red);}
+.header-text p{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:5px;
+  letter-spacing:.4px;text-transform:uppercase;}
+.badge{align-self:stretch;display:flex;align-items:center;padding:0 20px;margin-left:auto;
+  border-left:1px solid var(--ink);background:var(--paper);color:var(--ink);
+  font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;
+  max-width:220px;text-align:right;}
+
+/* ── tabs (numbered nav) ── */
+.tab-bar{display:flex;flex-shrink:0;background:var(--paper);border-bottom:1px solid var(--ink);counter-reset:tab;}
+.tab-btn{position:relative;display:flex;align-items:center;gap:9px;padding:12px 22px;
+  font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;
+  color:var(--muted);background:none;border:none;border-right:1px solid var(--line-soft);cursor:pointer;
+  transition:color .16s,background .16s;}
+.tab-btn::before{counter-increment:tab;content:counter(tab,decimal-leading-zero);
+  font-family:var(--mono);font-size:10px;font-weight:400;color:var(--red);letter-spacing:0;}
+.tab-btn svg{display:none;}
+.tab-btn:hover{color:var(--ink);background:var(--paper-2);}
+.tab-btn.active{color:var(--ink);}
+.tab-btn.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;background:var(--red);}
+
+/* ── panels ── */
+.tab-panel{display:none;flex:1;min-height:0;overflow:hidden;}
+.tab-panel.active{display:flex;flex-direction:column;}
+main{flex:1;display:flex;overflow:hidden;min-height:0;}
+
+/* ── sidebar ── */
+.sidebar{width:var(--sidebar-w);flex-shrink:0;background:var(--paper);border-right:1px solid var(--ink);
+  display:flex;flex-direction:column;gap:26px;padding:22px 20px 30px;overflow-y:auto;counter-reset:sec;}
+section{display:flex;flex-direction:column;gap:12px;}
+.stitle{display:flex;align-items:baseline;gap:9px;font-size:10px;font-weight:700;letter-spacing:1.6px;
+  text-transform:uppercase;color:var(--ink);padding-bottom:8px;border-bottom:1px solid var(--ink);}
+.stitle::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);
+  font-family:var(--mono);font-size:10px;font-weight:400;color:var(--red);letter-spacing:0;}
+.frow{display:flex;gap:14px;}
+.field{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0;}
+label{font-size:9.5px;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:6px;
+  letter-spacing:1.1px;text-transform:uppercase;}
+.lk{display:inline-grid;place-items:center;min-width:15px;height:15px;padding:0 3px;background:var(--ink);
+  color:var(--on-solid);font-family:var(--mono);font-size:9px;font-weight:600;}
+.iw{display:flex;align-items:stretch;background:var(--paper-2);border:1px solid var(--ink);
+  transition:box-shadow .14s,border-color .14s;}
+.iw:focus-within{border-color:var(--red);box-shadow:inset 0 0 0 1px var(--red);}
+.iw input{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--ink);
+  font-family:var(--sans);font-size:16px;font-weight:600;padding:8px 10px;font-variant-numeric:tabular-nums;letter-spacing:-.2px;}
+.iw input::placeholder{color:var(--muted);font-weight:500;}
+.iu{display:flex;align-items:center;padding:0 10px;color:var(--muted);font-family:var(--mono);
+  font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;border-left:1px solid var(--line-soft);background:var(--paper-3);}
+
+/* ── info / derived ── */
+.infobox,.dbox{display:flex;flex-direction:column;}
+.prow,.drow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-soft);}
+.prow:last-child,.drow:last-child{border-bottom:none;}
+.pk{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;}
+.pv{color:var(--ink);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;}
+.dk{color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:.2px;}
+.dv{color:var(--ink);font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.3px;min-width:34px;text-align:right;}
+
+/* ── validation card ── */
+.validation-card{border:1px solid var(--ink);background:var(--paper-2);padding:15px 15px 14px;
+  display:flex;flex-direction:column;gap:11px;}
+.validation-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+  padding-bottom:11px;border-bottom:1px solid var(--line-soft);}
+.validation-label{font-size:9px;text-transform:uppercase;letter-spacing:1.3px;color:var(--muted);font-weight:700;}
+.validation-state{font-size:13px;font-weight:700;margin-top:5px;letter-spacing:-.1px;}
+.validation-state.pending{color:var(--muted);}
+.validation-state.success{color:var(--green);}
+.validation-state.error{color:var(--red);}
+.validation-score{text-align:right;flex-shrink:0;}
+.validation-score-value{display:block;font-size:34px;font-weight:800;line-height:.85;color:var(--ink);
+  font-variant-numeric:tabular-nums;letter-spacing:-1.5px;}
+.validation-score-copy{display:block;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:5px;}
+.validation-summary{font-size:11px;color:var(--ink-2);line-height:1.55;}
+.validation-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.cert-badge{font-family:var(--mono);font-size:9px;padding:4px 8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;}
+.cert-badge.pending{background:var(--paper-3);color:var(--muted);border:1px solid var(--muted);}
+.cert-badge.success{background:var(--green);color:var(--on-solid);}
+.cert-badge.error{background:var(--red);color:var(--on-solid);}
+
+/* ── buttons ── */
+.btn{position:relative;display:flex;align-items:center;justify-content:center;gap:9px;padding:12px 15px;overflow:hidden;
+  font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;
+  color:var(--ink);background:var(--paper-2);border:1px solid var(--ink);transition:background .14s,color .14s,transform .1s;}
+.btn svg{flex-shrink:0;width:13px;height:13px;}
+.btn:hover:not(:disabled){background:var(--ink);color:var(--on-solid);}
+.btn:active:not(:disabled){transform:translateY(1px);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+#pBtn,#cyl-pBtn{background:var(--ink);color:var(--on-solid);}
+#pBtn:hover:not(:disabled),#cyl-pBtn:hover:not(:disabled){background:var(--red);border-color:var(--red);}
+.btn.gold{background:var(--red);color:var(--on-solid);border-color:var(--red);}
+.btn.gold:hover:not(:disabled){background:var(--red-2);border-color:var(--red-2);color:var(--on-solid);}
+.btn.certified{box-shadow:inset 0 3px 0 var(--green);}
+.btn-progress{position:absolute;left:0;top:0;bottom:0;width:calc(var(--charge,0)*100%);background:rgba(21,18,12,.12);pointer-events:none;transition:width .04s linear;}
+.btn.armed .btn-progress{background:rgba(21,18,12,.22);}
+#pBtn .btn-progress,#cyl-pBtn .btn-progress,.btn.gold .btn-progress{background:rgba(244,242,235,.2);}
+#pBtn.armed .btn-progress,#cyl-pBtn.armed .btn-progress,.btn.gold.armed .btn-progress{background:rgba(244,242,235,.32);}
+.ghost-btn{background:none;border:none;color:var(--red);font-family:var(--sans);font-size:10px;font-weight:700;
+  letter-spacing:.6px;text-transform:uppercase;cursor:pointer;padding:3px 0;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;}
+.ghost-btn:hover:not(:disabled){color:var(--ink);}
+.ghost-btn:disabled{color:var(--muted);cursor:not-allowed;text-decoration:none;}
+.export-stack{gap:9px!important;}
+#status,#cyl-status{font-family:var(--mono);font-size:10px;min-height:15px;text-align:center;padding:2px 0;color:var(--ink-2);letter-spacing:.3px;}
+#status.loading,#cyl-status.loading{color:var(--ink);}
+#status.success,#cyl-status.success{color:var(--green);}
+#status.error,#cyl-status.error{color:var(--red);}
+
+/* ── viewport ── */
+.rpane{flex:1;position:relative;display:flex;flex-direction:column;overflow:hidden;background:var(--graphite);}
+.rtbar{display:flex;align-items:center;gap:11px;padding:9px 15px;background:var(--paper);border-bottom:1px solid var(--ink);
+  font-family:var(--mono);font-size:10px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0;z-index:2;}
+.dot{width:8px;height:8px;background:var(--muted);flex-shrink:0;transition:background .3s;}
+.dot.on{background:var(--green);}
+#tbdim,#cyl-tbdim{margin-left:auto;color:var(--muted);font-size:9.5px;letter-spacing:.4px;text-transform:none;}
+canvas{flex:1;display:block;width:100%;background:var(--graphite);}
+
+/* ── ViewCube overlay ── */
+.viewport-tools{position:absolute;top:52px;right:16px;z-index:5;pointer-events:none;}
+.vc-widget{position:relative;width:104px;height:104px;pointer-events:none;}
+.vc-canvas{width:104px;height:104px;display:block;cursor:grab;pointer-events:auto;touch-action:none;}
+.vc-home{position:absolute;top:1px;left:3px;width:18px;height:18px;padding:0;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#8f8f8f;cursor:pointer;pointer-events:auto;transition:color .12s;}
+.vc-home:hover{color:#3f74d6;}
+.vc-menu{position:absolute;bottom:3px;right:3px;width:16px;height:16px;padding:0;display:flex;align-items:center;justify-content:center;background:none;border:none;color:#8f8f8f;cursor:pointer;pointer-events:auto;transition:color .12s;}
+.vc-menu:hover{color:#3f74d6;}
+
+/* ── hint + footer ── */
+.hint{display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:8px 15px;background:var(--paper);
+  border-top:1px solid var(--ink);font-family:var(--mono);font-size:9.5px;color:var(--muted);flex-shrink:0;letter-spacing:.3px;}
+.hint span:first-child{color:var(--red);font-weight:700;text-transform:uppercase;letter-spacing:1px;}
+footer{display:flex;gap:0;flex-wrap:wrap;background:var(--paper);border-top:2px solid var(--ink);flex-shrink:0;}
+footer div{flex:1;min-width:140px;padding:9px 16px;border-right:1px solid var(--line-soft);
+  font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;}
+footer div:last-child{border-right:none;}
+footer span{display:block;margin-top:3px;color:var(--ink);font-weight:600;font-size:10px;letter-spacing:.3px;}
+
+/* ── report dialog ── */
+.report-dialog{background:var(--paper-2);border:2px solid var(--ink);color:var(--ink);padding:0;max-width:580px;width:92vw;box-shadow:12px 12px 0 rgba(21,18,12,.14);}
+.report-dialog::backdrop{background:rgba(21,18,12,.5);}
+.report-shell{padding:22px 24px;display:flex;flex-direction:column;gap:16px;}
+.report-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:14px;border-bottom:1px solid var(--ink);}
+.report-kicker{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:1.4px;color:var(--red);font-weight:600;}
+.report-head h2{font-size:19px;margin-top:6px;font-weight:800;letter-spacing:-.5px;text-transform:uppercase;line-height:1.05;}
+.report-summary{font-size:12px;color:var(--ink-2);line-height:1.6;}
+.report-list{display:flex;flex-direction:column;max-height:250px;overflow-y:auto;border:1px solid var(--line-soft);}
+.report-item{display:flex;gap:10px;align-items:flex-start;font-size:11.5px;color:var(--ink-2);padding:9px 12px;border-bottom:1px solid var(--line-soft);}
+.report-item:last-child{border-bottom:none;}
+.report-item-mark{flex-shrink:0;font-family:var(--mono);font-weight:600;color:var(--red);font-size:11px;}
+.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);}
+.report-stat{background:var(--paper-2);padding:11px 13px;}
+.report-stat-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;}
+.report-stat-value{font-size:20px;font-weight:800;color:var(--ink);margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-.6px;}
+
+/* ── intro / landing ── */
+.intro{flex:1;overflow-y:auto;background:var(--paper);
+  background-image:linear-gradient(var(--line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);
+  background-size:34px 34px;background-position:-1px -1px;}
+.intro-inner{max-width:1120px;margin:0 auto;padding:0 40px 60px;}
+.intro-hero{padding:56px 0 40px;border-bottom:2px solid var(--ink);}
+.intro-eyebrow{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);margin-bottom:26px;}
+.intro-eyebrow::before{content:"";width:34px;height:2px;background:var(--red);}
+.intro-hero h2{font-size:clamp(40px,7vw,86px);font-weight:800;line-height:.92;letter-spacing:-3px;text-transform:uppercase;}
+.intro-hero h2 em{font-style:normal;color:var(--red);}
+.intro-lead{max-width:560px;margin-top:24px;font-size:15px;line-height:1.6;color:var(--ink-2);}
+.intro-metrics{display:flex;flex-wrap:wrap;gap:0;margin-top:34px;border:1px solid var(--ink);}
+.intro-metric{flex:1;min-width:150px;padding:14px 18px;border-right:1px solid var(--line-soft);}
+.intro-metric:last-child{border-right:none;}
+.intro-metric b{display:block;font-size:22px;font-weight:800;letter-spacing:-.6px;font-variant-numeric:tabular-nums;}
+.intro-metric span{display:block;margin-top:3px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);}
+
+.intro-sectionhead{display:flex;align-items:baseline;gap:12px;margin:46px 0 20px;
+  font-size:11px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;}
+.intro-sectionhead::before{content:"02";font-family:var(--mono);font-weight:400;color:var(--red);letter-spacing:0;}
+.intro-sectionhead span{color:var(--muted);font-weight:400;font-family:var(--mono);letter-spacing:.5px;}
+
+.intro-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:0;border:1px solid var(--ink);}
+.intro-card{display:flex;flex-direction:column;background:var(--paper-2);border-right:1px solid var(--ink);cursor:pointer;
+  transition:background .16s;}
+.intro-card:last-child{border-right:none;}
+.intro-card:hover{background:var(--paper);}
+.intro-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:18px 20px 0;}
+.intro-card-no{font-family:var(--mono);font-size:12px;color:var(--red);}
+.intro-card-tag{font-family:var(--mono);font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);
+  border:1px solid var(--muted);padding:3px 7px;}
+.intro-card h3{padding:6px 20px 0;font-size:30px;font-weight:800;letter-spacing:-1px;text-transform:uppercase;}
+.intro-card-desc{padding:8px 20px 0;font-size:12px;line-height:1.55;color:var(--ink-2);}
+.intro-schematic{margin:16px 0 4px;padding:14px 20px;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+  display:flex;align-items:center;justify-content:center;background:var(--graphite);min-height:150px;}
+.intro-schematic svg{width:100%;max-width:210px;height:auto;}
+.intro-params{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line-soft);margin:0;}
+.intro-param{background:var(--paper-2);padding:9px 20px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+.intro-param b{font-family:var(--mono);font-size:9px;color:var(--red);letter-spacing:.5px;}
+.intro-param span{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);}
+.intro-open{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 20px;
+  background:var(--ink);color:var(--on-solid);font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;transition:background .16s;}
+.intro-card:hover .intro-open{background:var(--red);}
+.intro-open .ar{font-size:16px;line-height:1;}
+
+.intro-features{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:0;border:1px solid var(--ink);border-top:none;}
+.intro-feature{padding:16px 20px;border-right:1px solid var(--line-soft);}
+.intro-feature:last-child{border-right:none;}
+.intro-feature b{display:flex;align-items:baseline;gap:8px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;}
+.intro-feature b::before{content:attr(data-no);font-family:var(--mono);font-weight:400;color:var(--red);font-size:10px;}
+.intro-feature p{margin-top:7px;font-size:11px;line-height:1.55;color:var(--ink-2);}
+.intro-colophon{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;margin-top:34px;padding-top:16px;
+  border-top:1px solid var(--ink);font-family:var(--mono);font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);}
+
+/* ── about / application notes ── */
+.about-hero{padding:52px 0 34px;border-bottom:2px solid var(--ink);}
+.about-hero h2{font-size:clamp(34px,6vw,66px);font-weight:800;line-height:.94;letter-spacing:-2px;text-transform:uppercase;}
+.about-hero h2 em{font-style:normal;color:var(--red);}
+.about-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));border:1px solid var(--ink);border-top:none;background:var(--paper-2);}
+.about-block{padding:22px 22px 26px;border-right:1px solid rgba(21,18,12,.3);}
+.about-block:last-child{border-right:none;}
+.about-no{font-family:var(--mono);font-size:10px;color:var(--red);letter-spacing:.5px;text-transform:uppercase;}
+.about-block h3{font-size:20px;font-weight:800;letter-spacing:-.6px;text-transform:uppercase;margin:8px 0 11px;}
+.about-block p{font-size:12.5px;line-height:1.7;color:var(--ink-2);}
+.about-head{display:flex;align-items:baseline;gap:12px;margin:46px 0 0;padding-bottom:13px;border-bottom:2px solid var(--ink);
+  font-size:13px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;}
+.about-head b{font-family:var(--mono);font-weight:400;color:var(--red);font-size:12px;}
+.about-head span{color:var(--muted);font-weight:400;letter-spacing:.4px;}
+.about-cases{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));border-left:1px solid var(--ink);border-top:none;}
+.about-case{padding:16px 18px 18px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);background:var(--paper-2);}
+.about-case h4{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;display:flex;gap:8px;align-items:baseline;}
+.about-case h4::before{content:attr(data-k);font-family:var(--mono);font-weight:400;color:var(--red);font-size:10px;}
+.about-case p{margin-top:7px;font-size:11.5px;line-height:1.6;color:var(--ink-2);}
+.about-cost{border:1px solid var(--ink);border-top:none;background:var(--paper-2);}
+.about-cost-row{display:flex;gap:18px;align-items:baseline;padding:14px 20px;border-bottom:1px solid rgba(21,18,12,.34);}
+.about-cost-row:last-child{border-bottom:none;}
+.about-cost-row b{flex-shrink:0;width:150px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--ink);border-left:2px solid var(--red);padding-left:12px;}
+.about-cost-row span{font-size:12px;line-height:1.6;color:var(--ink-2);}
+.about-cta{display:flex;flex-wrap:wrap;gap:14px;margin-top:30px;}
+.about-cta button{flex:1;min-width:220px;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:16px 20px;background:var(--ink);color:var(--on-solid);border:1px solid var(--ink);cursor:pointer;
+  font-family:var(--sans);font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;transition:background .16s;}
+.about-cta button:hover{background:var(--red);border-color:var(--red);}
+.about-cta button .ar{font-size:17px;line-height:1;}
+
+</style>
 </head>
 <body>
+
 <header>
   <div class="logo" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-      <path d="M12 2l9 5v10l-9 5-9-5V7l9-5z" />
-      <path d="M12 2v20M3 7l9 5 9-5" opacity=".35" />
+      <path d="M12 2l9 5v10l-9 5-9-5V7l9-5z"/>
+      <path d="M12 2v20M3 7l9 5 9-5" opacity=".35"/>
     </svg>
   </div>
   <div class="header-text">
     <h1>Cap<span>Gen</span></h1>
-    <p>// Production-Ready Static Deploy · Local Three.js · Browser STL Pipeline</p>
+    <p>Parametric Cap Generator — Three.js r128 · Browser STL Pipeline</p>
   </div>
-  <div class="badge">Developed for Reliance Electronics</div>
+  <div class="badge">Reliance Electronics</div>
 </header>
 
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-intro" type="button" onclick="switchTab('intro')">Overview</button>
+  <button class="tab-btn" id="tab-about" type="button" onclick="switchTab('about')">About</button>
+  <button class="tab-btn" id="tab-box" type="button" onclick="switchTab('box')">Box Cap</button>
+  <button class="tab-btn" id="tab-cyl" type="button" onclick="switchTab('cyl')">Cylinder Cap</button>
+</div>
+
+<!-- ═══════════════ OVERVIEW / LANDING ═══════════════ -->
+<div class="tab-panel active" id="panel-intro">
+  <div class="intro">
+    <div class="intro-inner">
+      <div class="intro-hero">
+        <div class="intro-eyebrow">CapGen · Parametric System</div>
+        <h2>Precision caps,<br><em>certified</em> for print.</h2>
+        <p class="intro-lead">A browser-native pipeline that turns four dimensions into a watertight, print-ready cap — generated, validated, repaired, and certified before a single triangle leaves your machine.</p>
+        <div class="intro-metrics">
+          <div class="intro-metric"><b>2</b><span>Generators</span></div>
+          <div class="intro-metric"><b>3</b><span>Export formats</span></div>
+          <div class="intro-metric"><b>100</b><span>Printability target</span></div>
+          <div class="intro-metric"><b>&lt;100<span style="letter-spacing:0"> ms</span></b><span>Generation time</span></div>
+        </div>
+      </div>
+
+      <div class="intro-sectionhead">Choose a generator <span>— select a module to begin</span></div>
+      <div class="intro-cards">
+        <div class="intro-card" role="button" tabindex="0" onclick="switchTab('box')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTab('box')}">
+          <div class="intro-card-top"><span class="intro-card-no">01</span><span class="intro-card-tag">Rectangular</span></div>
+          <h3>Box Cap</h3>
+          <p class="intro-card-desc">Rounded-corner rectangular cap with snap-bead rails and a hollow shell. Full control over footprint, height, and press-fit tolerance.</p>
+          <div class="intro-schematic" aria-hidden="true">
+            <svg viewBox="0 0 220 150" fill="none" stroke="#E8E5DC" stroke-width="1.4">
+              <path d="M40 52 L110 26 L196 58 L126 86 Z" stroke="#D8232A"/>
+              <path d="M40 52 L40 110 L126 142 L126 86" />
+              <path d="M126 86 L196 58 L196 116 L126 142" />
+              <path d="M40 110 L110 82 L196 116 M110 82 L110 26" stroke-dasharray="3 4" opacity=".55"/>
+              <path d="M24 52 L24 110" stroke="#D8232A" stroke-width="1"/><path d="M20 52 L28 52 M20 110 L28 110" stroke="#D8232A" stroke-width="1"/>
+            </svg>
+          </div>
+          <div class="intro-params">
+            <div class="intro-param"><b>W</b><span>Width</span></div>
+            <div class="intro-param"><b>L</b><span>Length</span></div>
+            <div class="intro-param"><b>H</b><span>Height</span></div>
+            <div class="intro-param"><b>T</b><span>Tolerance</span></div>
+          </div>
+          <div class="intro-open">Open generator <span class="ar">→</span></div>
+        </div>
+
+        <div class="intro-card" role="button" tabindex="0" onclick="switchTab('cyl')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchTab('cyl')}">
+          <div class="intro-card-top"><span class="intro-card-no">02</span><span class="intro-card-tag">Cylindrical</span></div>
+          <h3>Cylinder Cap</h3>
+          <p class="intro-card-desc">Closed-top hollow cylinder with an external grip ring, translated exactly from the source OpenSCAD module. Tuned for diameter, wall, and grip.</p>
+          <div class="intro-schematic" aria-hidden="true">
+            <svg viewBox="0 0 220 150" fill="none" stroke="#E8E5DC" stroke-width="1.4">
+              <ellipse cx="110" cy="34" rx="52" ry="17" stroke="#D8232A"/>
+              <path d="M58 34 L58 112 M162 34 L162 112"/>
+              <path d="M58 112 A52 17 0 0 0 162 112"/>
+              <path d="M58 112 A52 17 0 0 1 162 112" stroke-dasharray="3 4" opacity=".55"/>
+              <ellipse cx="110" cy="80" rx="52" ry="17" stroke-dasharray="3 4" opacity=".45"/>
+              <path d="M180 34 L180 112" stroke="#D8232A" stroke-width="1"/><path d="M176 34 L184 34 M176 112 L184 112" stroke="#D8232A" stroke-width="1"/>
+            </svg>
+          </div>
+          <div class="intro-params">
+            <div class="intro-param"><b>D</b><span>Diameter</span></div>
+            <div class="intro-param"><b>H</b><span>Height</span></div>
+            <div class="intro-param"><b>W</b><span>Wall</span></div>
+            <div class="intro-param"><b>T</b><span>Tolerance</span></div>
+          </div>
+          <div class="intro-open">Open generator <span class="ar">→</span></div>
+        </div>
+      </div>
+
+      <div class="intro-features">
+        <div class="intro-feature"><b data-no="A">Parametric</b><p>Every cap is rebuilt procedurally from your dimensions — no manual meshing, no imported STLs.</p></div>
+        <div class="intro-feature"><b data-no="B">Certified</b><p>Weld, repair, and watertight checks run on-device and score printability before export unlocks.</p></div>
+        <div class="intro-feature"><b data-no="C">Navigable</b><p>A Fusion-style ViewCube plus free-orbit, pan, and zoom-to-cursor drive the live preview.</p></div>
+        <div class="intro-feature"><b data-no="D">Portable</b><p>Download certified geometry as STL, OBJ, or 3MF — a single static page, no backend.</p></div>
+      </div>
+
+      <div class="intro-colophon"><span>CapGen — Reliance Electronics</span><span>Static deploy · Three.js r128</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ ABOUT / APPLICATION NOTES ═══════════════ -->
+<div class="tab-panel" id="panel-about">
+  <div class="intro">
+    <div class="intro-inner about">
+      <div class="about-hero">
+        <div class="intro-eyebrow">About · Application Notes</div>
+        <h2>From four numbers<br>to a <em>finished</em> cap.</h2>
+        <p class="intro-lead">CapGen is a parametric generator for the small protective and connector caps that electronics assembly lines consume by the thousand — produced on demand, in-house, without a single mould.</p>
+      </div>
+
+      <div class="about-grid">
+        <section class="about-block">
+          <p class="about-no">01 — Background</p>
+          <h3>The idea</h3>
+          <p>CapGen started as an internal tool at Reliance Electronics. Engineers kept needing one-off protective caps — for a connector, an exposed pin header, a trimmer, a port — and kept waiting days on the machine shop or on injection-moulded parts. The shortcut was to describe a cap by its dimensions instead of drawing it, and let the geometry build itself. Two families cover almost every case: a rounded rectangular box cap, and a closed-top cylinder cap with an external grip ring.</p>
+        </section>
+        <section class="about-block">
+          <p class="about-no">02 — Pipeline</p>
+          <h3>How it works</h3>
+          <p>You enter the outside dimensions and a press-fit tolerance. CapGen builds the mesh procedurally in the browser, then runs a repair-and-validation pass — welding vertices, normalising winding, closing boundary loops — and scores the result for printability. Only a watertight, certified mesh unlocks export. The cylinder cap is a direct translation of a proven OpenSCAD module, so the printed part matches the reference exactly. Everything runs client-side on Three.js — no server, nothing to install.</p>
+        </section>
+      </div>
+
+      <div class="about-head"><b>03</b> Where it fits <span>— PCB &amp; electronics manufacturing</span></div>
+      <div class="about-cases">
+        <div class="about-case"><h4 data-k="A">Connector &amp; port caps</h4><p>Seal USB, RJ45, headers, and edge connectors against dust and ESD through storage, transit, and the line.</p></div>
+        <div class="about-case"><h4 data-k="B">Component protectors</h4><p>Shield potentiometers, crystals, relays, and tall parts from knocks during handling, test, and rework.</p></div>
+        <div class="about-case"><h4 data-k="C">Masking for finishing</h4><p>Plug ports and cover connectors through wave soldering, conformal coating, and aqueous cleaning.</p></div>
+        <div class="about-case"><h4 data-k="D">Standoffs &amp; jigs</h4><p>Quick spacers, alignment fixtures, and locators sized to a specific board revision.</p></div>
+        <div class="about-case"><h4 data-k="E">Shipping &amp; field caps</h4><p>Protective end-caps for cabled assemblies, enclosures, and serviceable ports in the field.</p></div>
+        <div class="about-case"><h4 data-k="F">Prototyping</h4><p>A matching cap the same day a new connector lands on the board — no tooling wait.</p></div>
+      </div>
+
+      <div class="about-head"><b>04</b> Why it's cost-effective <span>— on-demand vs. tooling</span></div>
+      <div class="about-cost">
+        <div class="about-cost-row"><b>No tooling</b><span>Injection moulds run into the thousands and take weeks to cut. A printed cap needs none — the geometry is the tool.</span></div>
+        <div class="about-cost-row"><b>No minimum order</b><span>Make one, or a hundred, exactly when you need them. Inventory becomes a file, not a shelf.</span></div>
+        <div class="about-cost-row"><b>Parametric</b><span>Any size in seconds, so a board revision or a new connector never orphans a batch of caps.</span></div>
+        <div class="about-cost-row"><b>Certified first print</b><span>The watertight check catches un-printable geometry before it wastes filament and machine time.</span></div>
+        <div class="about-cost-row"><b>In-house &amp; offline</b><span>A single static page. Parts — and the designs behind them — never leave the building.</span></div>
+      </div>
+
+      <div class="about-cta">
+        <button type="button" onclick="switchTab('box')">Open Box generator <span class="ar">→</span></button>
+        <button type="button" onclick="switchTab('cyl')">Open Cylinder generator <span class="ar">→</span></button>
+      </div>
+
+      <div class="intro-colophon"><span>CapGen — Reliance Electronics</span><span>Application notes · Rev. A</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ BOX CAP TAB ═══════════════ -->
+<div class="tab-panel" id="panel-box">
 <main>
   <aside class="sidebar">
     <section>
@@ -31,37 +447,24 @@
       <div class="frow">
         <div class="field">
           <label for="iW"><span class="lk">W</span>&nbsp;Width</label>
-          <div class="iw">
-            <input type="number" id="iW" value="30" min="5" max="500" step="0.5" />
-            <span class="iu">mm</span>
-          </div>
+          <div class="iw"><input type="number" id="iW" value="30" min="5" max="500" step="0.5"/><span class="iu">mm</span></div>
         </div>
         <div class="field">
           <label for="iL"><span class="lk">L</span>&nbsp;Length</label>
-          <div class="iw">
-            <input type="number" id="iL" value="30" min="5" max="500" step="0.5" />
-            <span class="iu">mm</span>
-          </div>
+          <div class="iw"><input type="number" id="iL" value="30" min="5" max="500" step="0.5"/><span class="iu">mm</span></div>
         </div>
       </div>
       <div class="frow">
         <div class="field">
           <label for="iH"><span class="lk">H</span>&nbsp;Height</label>
-          <div class="iw">
-            <input type="number" id="iH" value="30" min="3" max="500" step="0.5" />
-            <span class="iu">mm</span>
-          </div>
+          <div class="iw"><input type="number" id="iH" value="30" min="3" max="500" step="0.5"/><span class="iu">mm</span></div>
         </div>
         <div class="field">
           <label for="iT"><span class="lk">T</span>&nbsp;Tolerance</label>
-          <div class="iw">
-            <input type="number" id="iT" value="0.3" min="0" max="2" step="0.05" />
-            <span class="iu">mm</span>
-          </div>
+          <div class="iw"><input type="number" id="iT" value="0.3" min="0" max="2" step="0.05"/><span class="iu">mm</span></div>
         </div>
       </div>
     </section>
-
     <section>
       <p class="stitle">Fixed constants</p>
       <div class="infobox">
@@ -72,7 +475,6 @@
         <div class="prow"><span class="pk">Curve Segments</span><span class="pv">22</span></div>
       </div>
     </section>
-
     <section>
       <p class="stitle">Derived values</p>
       <div class="dbox">
@@ -85,90 +487,3624 @@
         <div class="drow"><span class="dk">Rail Length</span><span class="dv" id="d_cl">-</span></div>
       </div>
     </section>
-
     <section class="export-stack">
       <p class="stitle">Export</p>
       <div class="field">
         <label for="iFilename"><span class="lk">↓</span>&nbsp;File name</label>
-        <div class="iw">
-          <input type="text" id="iFilename" value="cap" placeholder="cap" />
-          <span class="iu">.stl</span>
+        <div class="iw"><input type="text" id="iFilename" value="Box_Cap" placeholder="Box_Cap"/><span class="iu">base</span></div>
+      </div>
+      <div class="validation-card" id="validationCard">
+        <div class="validation-head">
+          <div>
+            <p class="validation-label">Validation Status</p>
+            <p class="validation-state pending" id="validationState">Awaiting preview build</p>
+          </div>
+          <div class="validation-score">
+            <span class="validation-score-value" id="validationScore">--</span>
+            <span class="validation-score-copy">Printability Score</span>
+          </div>
+        </div>
+        <p class="validation-summary" id="validationSummary">Load a preview to validate, repair, and certify the generated mesh before export.</p>
+        <div class="validation-meta">
+          <span class="cert-badge pending" id="certBadge">Certification Pending</span>
+          <button class="ghost-btn" id="reportBtn" type="button" disabled>View Validation Details</button>
         </div>
       </div>
-
       <button class="btn" id="pBtn" type="button">
         <span class="btn-progress" aria-hidden="true"></span>
-        <svg id="pIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
+        <svg id="pIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         <span id="pLbl">Load Preview</span>
       </button>
-
       <button class="btn gold" id="dBtn" type="button">
         <span class="btn-progress" aria-hidden="true"></span>
-        <svg id="dIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-          <polyline points="7 10 12 15 17 10" />
-          <line x1="12" y1="15" x2="12" y2="3" />
-        </svg>
-        <span id="dLbl">Download STL</span>
+        <svg id="dIcon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="dLbl">Download Certified STL</span>
       </button>
-
+      <button class="btn" id="objBtn" type="button" disabled>
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" opacity=".28"/><path d="M9 9h6v6H9z"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg>
+        <span>Download OBJ</span>
+      </button>
+      <button class="btn" id="m3mfBtn" type="button" disabled>
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
+        <span>Download 3MF</span>
+      </button>
       <div id="status" aria-live="polite"></div>
     </section>
   </aside>
-
   <section class="rpane">
     <div class="rtbar">
       <div class="dot" id="dot"></div>
       <span id="tbmsg">Waiting for Preview</span>
       <span id="tbdim"></span>
     </div>
-
     <div class="viewport-tools">
-      <div class="viewcube-panel">
-        <p class="viewcube-title">View Cube</p>
-        <div class="viewcube-scene">
-          <div class="viewcube" id="viewCube" aria-label="View Cube">
-            <button class="cube-face face-top" type="button" data-view="top">Top</button>
-            <button class="cube-face face-bottom" type="button" data-view="bottom">Bottom</button>
-            <button class="cube-face face-front" type="button" data-view="front">Front</button>
-            <button class="cube-face face-back" type="button" data-view="back">Back</button>
-            <button class="cube-face face-left" type="button" data-view="left">Left</button>
-            <button class="cube-face face-right" type="button" data-view="right">Right</button>
-            <button class="cube-corner corner-tfr" type="button" data-view="corner-tfr" aria-label="Top Front Right View" title="Top Front Right"></button>
-            <button class="cube-corner corner-tfl" type="button" data-view="corner-tfl" aria-label="Top Front Left View" title="Top Front Left"></button>
-            <button class="cube-corner corner-tbr" type="button" data-view="corner-tbr" aria-label="Top Back Right View" title="Top Back Right"></button>
-            <button class="cube-corner corner-tbl" type="button" data-view="corner-tbl" aria-label="Top Back Left View" title="Top Back Left"></button>
-            <button class="cube-corner corner-bfr" type="button" data-view="corner-bfr" aria-label="Bottom Front Right View" title="Bottom Front Right"></button>
-            <button class="cube-corner corner-bfl" type="button" data-view="corner-bfl" aria-label="Bottom Front Left View" title="Bottom Front Left"></button>
-            <button class="cube-corner corner-bbr" type="button" data-view="corner-bbr" aria-label="Bottom Back Right View" title="Bottom Back Right"></button>
-            <button class="cube-corner corner-bbl" type="button" data-view="corner-bbl" aria-label="Bottom Back Left View" title="Bottom Back Left"></button>
-          </div>
-        </div>
-        <div class="viewcube-actions">
-          <button class="viewchip" id="homeBtn" type="button" data-view="home">Home</button>
-          <button class="viewchip" id="fitBtn" type="button" data-view="fit">Fit View</button>
-        </div>
-      </div>
+      <div id="viewCubeMount"></div>
     </div>
-
     <canvas id="cv"></canvas>
-
     <div class="hint">
       <span>Fusion-Style Navigation:</span>
-      <span>Shift + MMB: Orbit · MMB: Pan · Wheel: Zoom to Cursor</span>
-      <span>RMB or LMB Drag: Orbit · F: Fit View</span>
+      <span>Shift + MMB: Orbit · MMB: Pan · Wheel: Zoom to Cursor · RMB or LMB: Orbit · F: Fit View</span>
     </div>
   </section>
 </main>
+<dialog class="report-dialog" id="reportDialog">
+  <div class="report-shell">
+    <div class="report-head">
+      <div><p class="report-kicker">Validation Report</p><h2 id="reportTitle">No validated model yet</h2></div>
+      <button class="ghost-btn" id="reportClose" type="button">Close</button>
+    </div>
+    <p class="report-summary" id="reportSummary">Build a preview to generate a printability report.</p>
+    <div class="report-list" id="reportList"></div>
+    <div class="report-grid" id="reportStats"></div>
+  </div>
+</dialog>
+</div>
+
+<!-- ═══════════════ CYLINDER CAP TAB ═══════════════ -->
+<div class="tab-panel" id="panel-cyl">
+<main>
+  <aside class="sidebar">
+    <section>
+      <p class="stitle">Dimensions</p>
+      <div class="frow">
+        <div class="field">
+          <label for="cyl-iD"><span class="lk">D</span>&nbsp;Diameter</label>
+          <div class="iw"><input type="number" id="cyl-iD" value="9.85" min="3" max="300" step="0.05"/><span class="iu">mm</span></div>
+        </div>
+        <div class="field">
+          <label for="cyl-iH"><span class="lk">H</span>&nbsp;Height</label>
+          <div class="iw"><input type="number" id="cyl-iH" value="7.2" min="2" max="300" step="0.1"/><span class="iu">mm</span></div>
+        </div>
+      </div>
+      <div class="frow">
+        <div class="field">
+          <label for="cyl-iW"><span class="lk">W</span>&nbsp;Wall</label>
+          <div class="iw"><input type="number" id="cyl-iW" value="1.0" min="0.4" max="10" step="0.1"/><span class="iu">mm</span></div>
+        </div>
+        <div class="field">
+          <label for="cyl-iT"><span class="lk">T</span>&nbsp;Tolerance</label>
+          <div class="iw"><input type="number" id="cyl-iT" value="0.2" min="0" max="2" step="0.05"/><span class="iu">mm</span></div>
+        </div>
+      </div>
+    </section>
+    <section>
+      <p class="stitle">Fixed constants</p>
+      <div class="infobox">
+        <div class="prow"><span class="pk">Top Thickness</span><span class="pv">2.0 mm</span></div>
+        <div class="prow"><span class="pk">Grip Ring</span><span class="pv">Torus r = Wall / 2</span></div>
+        <div class="prow"><span class="pk">Radial Segments</span><span class="pv">100 ($fn)</span></div>
+        <div class="prow"><span class="pk">Torus Segments</span><span class="pv">40</span></div>
+      </div>
+    </section>
+    <section>
+      <p class="stitle">Derived values</p>
+      <div class="dbox">
+        <div class="drow"><span class="dk">Inner Dia = D + T</span><span class="dv" id="cyl-d_id">–</span></div>
+        <div class="drow"><span class="dk">Outer Dia</span><span class="dv" id="cyl-d_od">–</span></div>
+        <div class="drow"><span class="dk">Total Height</span><span class="dv" id="cyl-d_th">–</span></div>
+        <div class="drow"><span class="dk">Grip Ring Z</span><span class="dv" id="cyl-d_gz">–</span></div>
+        <div class="drow"><span class="dk">Grip Ring r</span><span class="dv" id="cyl-d_gr">–</span></div>
+      </div>
+    </section>
+    <section class="export-stack">
+      <p class="stitle">Export</p>
+      <div class="field">
+        <label for="cyl-iFilename"><span class="lk">↓</span>&nbsp;File name</label>
+        <div class="iw"><input type="text" id="cyl-iFilename" value="Cyl_Cap" placeholder="Cyl_Cap"/><span class="iu">base</span></div>
+      </div>
+      <div class="validation-card">
+        <div class="validation-head">
+          <div>
+            <p class="validation-label">Validation Status</p>
+            <p class="validation-state pending" id="cyl-validationState">Awaiting preview build</p>
+          </div>
+          <div class="validation-score">
+            <span class="validation-score-value" id="cyl-validationScore">--</span>
+            <span class="validation-score-copy">Printability Score</span>
+          </div>
+        </div>
+        <p class="validation-summary" id="cyl-validationSummary">Load a preview to validate and certify the mesh before export.</p>
+        <div class="validation-meta">
+          <span class="cert-badge pending" id="cyl-certBadge">Certification Pending</span>
+          <button class="ghost-btn" id="cyl-reportBtn" type="button" disabled>View Validation Details</button>
+        </div>
+      </div>
+      <button class="btn" id="cyl-pBtn" type="button">
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span id="cyl-pLbl">Load Preview</span>
+      </button>
+      <button class="btn gold" id="cyl-dBtn" type="button" disabled>
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Download Certified STL</span>
+      </button>
+      <button class="btn" id="cyl-objBtn" type="button" disabled>
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" opacity=".28"/><path d="M9 9h6v6H9z"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg>
+        <span>Download OBJ</span>
+      </button>
+      <button class="btn" id="cyl-m3mfBtn" type="button" disabled>
+        <span class="btn-progress" aria-hidden="true"></span>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>
+        <span>Download 3MF</span>
+      </button>
+      <div id="cyl-status" aria-live="polite"></div>
+    </section>
+  </aside>
+  <section class="rpane" id="cyl-rpane">
+    <div class="rtbar">
+      <div class="dot" id="cyl-dot"></div>
+      <span id="cyl-tbmsg">Waiting for Preview</span>
+      <span id="cyl-tbdim"></span>
+    </div>
+    <div class="viewport-tools">
+      <div id="cyl-viewCubeMount"></div>
+    </div>
+    <canvas id="cyl-cv"></canvas>
+    <div class="hint">
+      <span>Fusion-Style Navigation:</span>
+      <span>Shift + MMB: Orbit · MMB: Pan · Wheel: Zoom to Cursor · RMB or LMB: Orbit · F: Fit View</span>
+    </div>
+  </section>
+</main>
+<dialog class="report-dialog" id="cyl-reportDialog">
+  <div class="report-shell">
+    <div class="report-head">
+      <div><p class="report-kicker">Validation Report</p><h2 id="cyl-reportTitle">No validated model yet</h2></div>
+      <button class="ghost-btn" id="cyl-reportClose" type="button">Close</button>
+    </div>
+    <p class="report-summary" id="cyl-reportSummary">Build a preview to generate a printability report.</p>
+    <div class="report-list" id="cyl-reportList"></div>
+    <div class="report-grid" id="cyl-reportStats"></div>
+  </div>
+</dialog>
+</div>
 
 <footer>
   <div>Engine: <span>Procedural Mesh Builder</span></div>
-  <div>Renderer: <span>Three.js r128 Local</span></div>
-  <div>Navigation: <span>CAD-Style Orbit Target + View Cube</span></div>
-  <div>Export: <span>Binary STL</span></div>
+  <div>Renderer: <span>Three.js r128</span></div>
+  <div>Navigation: <span>CAD-Style Orbit + View Cube</span></div>
+  <div>Export: <span>Certified STL · OBJ · 3MF</span></div>
 </footer>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+  window.dispatchEvent(new Event('resize'));
+  // Build the default preview the first time a generator tab is opened.
+  const show = window.__capgenShow && window.__capgenShow[id];
+  if (show) requestAnimationFrame(show);
+}
+
+/* Skip GPU draws for whichever tab's canvas is hidden. This wraps the Three.js
+   renderer's render() so a hidden canvas costs nothing, letting the visible tab
+   run at a smooth full frame rate. Works for both the box and cylinder renderers
+   without modifying either app's code. */
+(function(){
+  function gate(){
+    if(!window.THREE || !THREE.WebGLRenderer || THREE.WebGLRenderer.__gated) return;
+    const proto = THREE.WebGLRenderer.prototype;
+    const realRender = proto.render;
+    proto.render = function(scene, camera){
+      const canvas = this.domElement;
+      // Determine which panel this canvas belongs to
+      const panel = canvas && canvas.closest ? canvas.closest('.tab-panel') : null;
+      if(panel && !panel.classList.contains('active')) return; // hidden → skip draw
+      return realRender.call(this, scene, camera);
+    };
+    THREE.WebGLRenderer.__gated = true;
+  }
+  gate();
+  if(!window.THREE){ window.addEventListener('DOMContentLoaded', gate); }
+})();
+</script>
+
+<!-- ══════ Shared CAD-style ViewCube (WebGL, 26 interactive regions) ══════ -->
+<script>
+/*
+  window.createCADViewCube(cfg) -> renders a Fusion-style ViewCube into cfg.mount.
+  cfg = {
+    mount:        DOM element to host the widget (position:relative recommended),
+    getQuaternion:() => THREE.Quaternion  (main camera world orientation),
+    getViewDir:   () => THREE.Vector3     (normalized camera-to-target direction),
+    snap:         (dirVec3, kind) => {}   (kind: 'face'|'edge'|'corner'),
+    orbit:        (dxPx, dyPx) => {}      (live free-orbit while dragging cube),
+    home:         () => {},               (go to home isometric view),
+    roll:         (dir) => {}             (dir = +1 cw / -1 ccw, 90deg on same face)
+  }
+  Returns { update(), dispose() }.  Call update() once per animation frame.
+*/
+window.createCADViewCube = function(cfg){
+  const THREE = window.THREE;
+  const SIZE = 104;                         // px, within 80-120 spec
+  const wrap = document.createElement('div');
+  wrap.className = 'vc-widget';
+
+  // --- cube canvas + renderer ---
+  const canvas = document.createElement('canvas');
+  canvas.className = 'vc-canvas';
+  wrap.appendChild(canvas);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(SIZE, SIZE, false);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(33, 1, 0.1, 100);
+  cam.position.set(0, 0, 6.2);
+  cam.lookAt(0, 0, 0);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.92));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.55); dl.position.set(3, 5, 6); scene.add(dl);
+
+  const group = new THREE.Group();       // rotates to mirror the main camera
+  scene.add(group);
+
+  // palette (matches app dark theme)
+  const COL = {
+    body:   0xbcbcbc,
+    face:   0xf2f2f2,
+    edge:   0xdedede,
+    corner: 0xd2d2d2,
+    hover:  0xaecdf0,
+    active: 0x8fb8e8
+  };
+
+  // beveled inner body (recessed so gaps between tiles read as separation lines)
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(1.86, 1.86, 1.86),
+    new THREE.MeshBasicMaterial({ color: COL.body })
+  );
+  group.add(body);
+  // crisp wire on body edges = thin separation/bevel lines
+  const bodyWire = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(1.9, 1.9, 1.9)),
+    new THREE.LineBasicMaterial({ color: 0xb4b4b4 })
+  );
+  group.add(bodyWire);
+
+  const regions = [];  // { mesh, dir, kind, base }
+
+  function labelTexture(text){
+    const c = document.createElement('canvas'); c.width = c.height = 160;
+    const x = c.getContext('2d');
+    x.fillStyle = '#f2f2f2'; x.fillRect(3, 3, 154, 154);
+    x.strokeStyle = '#d6d6d6'; x.lineWidth = 3; x.strokeRect(3, 3, 154, 154);
+    x.fillStyle = '#5f5f5f';
+    x.font = '600 29px "Helvetica Neue", Helvetica, Arial, sans-serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.letterSpacing = '1px';
+    x.fillText(text, 80, 84);
+    const t = new THREE.CanvasTexture(c);
+    t.anisotropy = 4;
+    return t;
+  }
+  function roundRect(x, X, Y, w, h, r){
+    x.beginPath();
+    x.moveTo(X + r, Y);
+    x.arcTo(X + w, Y, X + w, Y + h, r);
+    x.arcTo(X + w, Y + h, X, Y + h, r);
+    x.arcTo(X, Y + h, X, Y, r);
+    x.arcTo(X, Y, X + w, Y, r);
+    x.closePath();
+  }
+
+  function addTile(dir, kind, radius, w, h, up, label){
+    const n = dir.clone().normalize();
+    const center = n.clone().multiplyScalar(radius);
+    let mat;
+    if (label){
+      mat = new THREE.MeshBasicMaterial({ map: labelTexture(label), transparent:false });
+    } else {
+      mat = new THREE.MeshBasicMaterial({ color: kind === 'corner' ? COL.corner : COL.edge });
+    }
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    mesh.position.copy(center);
+    mesh.up.copy(up);
+    mesh.lookAt(center.clone().add(n));
+    mesh.userData = { dir: n, kind, base: mat.color.clone(), isLabel: !!label };
+    group.add(mesh);
+    regions.push(mesh);
+    return mesh;
+  }
+
+  const V = (x,y,z) => new THREE.Vector3(x,y,z);
+  const UP = V(0,1,0);
+
+  // 6 faces
+  addTile(V(0,0,1),  'face', 1.0, 1.2, 1.2, UP,        'FRONT');
+  addTile(V(0,0,-1), 'face', 1.0, 1.2, 1.2, UP,        'BACK');
+  addTile(V(1,0,0),  'face', 1.0, 1.2, 1.2, UP,        'RIGHT');
+  addTile(V(-1,0,0), 'face', 1.0, 1.2, 1.2, UP,        'LEFT');
+  addTile(V(0,1,0),  'face', 1.0, 1.2, 1.2, V(0,0,-1), 'TOP');
+  addTile(V(0,-1,0), 'face', 1.0, 1.2, 1.2, V(0,0,1),  'BOTTOM');
+
+  // 12 edges — width across the chamfer, length along the shared free axis
+  const EW = 0.34, EL = 1.2, ER = 1.28;
+  // X-Z edges (free axis = Y)
+  [[1,0,1],[1,0,-1],[-1,0,1],[-1,0,-1]].forEach(e => addTile(V(e[0],e[1],e[2]),'edge',ER, EW, EL, V(0,1,0)));
+  // X-Y edges (free axis = Z)
+  [[1,1,0],[1,-1,0],[-1,1,0],[-1,-1,0]].forEach(e => addTile(V(e[0],e[1],e[2]),'edge',ER, EL, EW, V(0,0,1)));
+  // Y-Z edges (free axis = X)
+  [[0,1,1],[0,1,-1],[0,-1,1],[0,-1,-1]].forEach(e => addTile(V(e[0],e[1],e[2]),'edge',ER, EL, EW, V(1,0,0)));
+
+  // 8 corners
+  [[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1]]
+    .forEach(c => addTile(V(c[0],c[1],c[2]), 'corner', 1.5, 0.52, 0.52, V(0,1,0)));
+
+  // ── Fusion-style orientation axes, pinned to the near (front-bottom-left) corner.
+  //    Decorative only (not raycast), rotates with the cube like Fusion's triad.
+  (function addAxes(){
+    const origin = new THREE.Vector3(-1, -1, 1);
+    const yUp = new THREE.Vector3(0, 1, 0);
+    function axis(dx, dy, dz, color){
+      const dir = new THREE.Vector3(dx, dy, dz).normalize();
+      const len = 1.9, r = 0.032;
+      const q2 = new THREE.Quaternion().setFromUnitVectors(yUp, dir);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), new THREE.MeshBasicMaterial({ color }));
+      shaft.quaternion.copy(q2);
+      shaft.position.copy(origin).addScaledVector(dir, len / 2);
+      group.add(shaft);
+      const head = new THREE.Mesh(new THREE.ConeGeometry(r * 2.4, r * 5.5, 10), new THREE.MeshBasicMaterial({ color }));
+      head.quaternion.copy(q2);
+      head.position.copy(origin).addScaledVector(dir, len + r * 2.6);
+      group.add(head);
+    }
+    axis( 1, 0, 0, 0xdb4b4b);  // right  — red
+    axis( 0, 1, 0, 0x3f74d6);  // up     — blue (matches Fusion's vertical axis)
+    axis( 0, 0,-1, 0x37a24d);  // depth  — green
+  })();
+
+  // ---- interaction ----
+  const ray = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  let hovered = null;
+  let down = null;         // {x,y} at pointerdown
+  let dragging = false;
+  let needsRender = true;  // only redraw the cube when orientation or hover changes
+  const DRAG_PX = 4;
+
+  function setHover(mesh){
+    if (hovered === mesh) return;
+    if (hovered) applyColor(hovered, hovered.userData.base);
+    hovered = mesh;
+    if (hovered) applyColor(hovered, new THREE.Color(COL.hover));
+    canvas.style.cursor = hovered ? 'pointer' : 'grab';
+    needsRender = true;
+  }
+  function applyColor(mesh, col){
+    if (mesh.userData.isLabel) mesh.material.color.copy(col.equals(mesh.userData.base) ? new THREE.Color(0xffffff) : col);
+    else mesh.material.color.copy(col);
+  }
+
+  function pick(clientX, clientY){
+    const r = canvas.getBoundingClientRect();
+    ndc.x = ((clientX - r.left) / r.width) * 2 - 1;
+    ndc.y = -((clientY - r.top) / r.height) * 2 + 1;
+    ray.setFromCamera(ndc, cam);
+    const hits = ray.intersectObjects(regions, false);
+    return hits.length ? hits[0].object : null;
+  }
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (down) return;                    // dragging handled on window
+    setHover(pick(e.clientX, e.clientY));
+  });
+  canvas.addEventListener('pointerleave', () => { if (!down) setHover(null); });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    down = { x: e.clientX, y: e.clientY };
+    dragging = false;
+    canvas.setPointerCapture?.(e.pointerId);
+    canvas.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  function onMove(e){
+    if (!down) return;
+    const dx = e.clientX - down.x, dy = e.clientY - down.y;
+    if (!dragging && (Math.abs(dx) + Math.abs(dy)) > DRAG_PX){ dragging = true; setHover(null); }
+    if (dragging){
+      cfg.orbit(e.movementX || (e.clientX - down.lastX || dx), e.movementY || (e.clientY - down.lastY || dy));
+    }
+    down.lastX = e.clientX; down.lastY = e.clientY;
+  }
+  function onUp(e){
+    if (!down) return;
+    const wasDrag = dragging;
+    const upX = e.clientX, upY = e.clientY;
+    down = null; dragging = false;
+    canvas.style.cursor = 'grab';
+    if (!wasDrag){
+      const m = pick(upX, upY);
+      if (m) cfg.snap(m.userData.dir.clone(), m.userData.kind);
+    }
+  }
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+
+  cfg.mount.appendChild(wrap);
+  // Fusion-style home icon (top-left) + view caret (bottom-right). Subtle grey.
+  wrap.insertAdjacentHTML('beforeend',
+    '<button class="vc-home" type="button" title="Home view" aria-label="Home view">' +
+      '<svg viewBox="0 0 24 24" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" d="M4 11.4 12 5l8 6.4M6.6 9.8V19h10.8V9.8"/></svg>' +
+    '</button>' +
+    '<button class="vc-menu" type="button" title="Fit view" aria-label="Fit view">' +
+      '<svg viewBox="0 0 24 24" width="11" height="11"><path fill="currentColor" d="M5 8h14l-7 9z"/></svg>' +
+    '</button>');
+  wrap.querySelector('.vc-home').addEventListener('click', () => { if (cfg.home) cfg.home(); });
+  wrap.querySelector('.vc-menu').addEventListener('click', () => { if (cfg.fit) cfg.fit(); else if (cfg.home) cfg.home(); });
+
+  // Mirror the main camera orientation onto the cube, and ONLY redraw when it
+  // actually changed. When the scene is idle the cube costs zero draw calls,
+  // which removes the per-frame stutter of the previous version.
+  const q = new THREE.Quaternion();
+  function update(){
+    q.copy(cfg.getQuaternion()).invert();
+    if (Math.abs(q.dot(group.quaternion)) < 0.9999995) {
+      group.quaternion.copy(q);
+      needsRender = true;
+    }
+    // Don't draw (or clear the flag) while this tab is hidden — otherwise the
+    // flag would be cleared without an actual draw and the cube would show stale
+    // on the next reveal. It renders on the first frame the tab is visible.
+    const panel = canvas.closest('.tab-panel');
+    if (panel && !panel.classList.contains('active')) return;
+    if (needsRender) {
+      renderer.render(scene, cam);
+      needsRender = false;
+    }
+  }
+  function dispose(){
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    renderer.dispose();
+    wrap.remove();
+  }
+  return { update, dispose };
+};
+</script>
+
+<!-- ══════ ORIGINAL BOX CAP app.js ══════ -->
+<script>
+(() => {
+  if (!window.THREE) {
+    window.addEventListener('DOMContentLoaded', () => {
+      const status = document.getElementById('status');
+      if (status) {
+        status.className = 'error';
+        status.textContent = 'Three.js failed to load from local assets.';
+      }
+    });
+    return;
+  }
+
+  const MODEL = Object.freeze({
+    wall: 1.0,
+    bottom: 2.0,
+    sphereRadius: 2.032 / 2,
+    curveSegments: 22,
+    railLengthStep: 4,
+    maxRadius: 4000,
+    minRadius: 8
+  });
+
+  const HOME_VIEW_KEY = 'corner-tfr';
+
+  const VIEW_PRESETS = Object.freeze({
+  top: new THREE.Vector3(0, 1, 0),
+  bottom: new THREE.Vector3(0, -1, 0),
+  front: new THREE.Vector3(0, 0, 1),
+  back: new THREE.Vector3(0, 0, -1),
+  left: new THREE.Vector3(-1, 0, 0),
+  right: new THREE.Vector3(1, 0, 0),
+  'corner-tfr': new THREE.Vector3(1, 1, 1).normalize(),
+  'corner-tfl': new THREE.Vector3(-1, 1, 1).normalize(),
+  'corner-tbr': new THREE.Vector3(1, 1, -1).normalize(),
+  'corner-tbl': new THREE.Vector3(-1, 1, -1).normalize(),
+  'corner-bfr': new THREE.Vector3(1, -1, 1).normalize(),
+  'corner-bfl': new THREE.Vector3(-1, -1, 1).normalize(),
+  'corner-bbr': new THREE.Vector3(1, -1, -1).normalize(),
+  'corner-bbl': new THREE.Vector3(-1, -1, -1).normalize()
+});
+
+  const DAMPING = Object.freeze({
+    transition: 11,
+    viewThreshold: 1e-3
+  });
+
+  const VALIDATION = Object.freeze({
+    weldTolerance: 1e-5,
+    areaTolerance: 1e-8,
+    volumeTolerance: 1e-6,
+    boundaryPlanarTolerance: 1e-4,
+    fragmentTriangleRatio: 0.015,
+    fragmentVolumeRatio: 0.0025,
+    holeRepairLimit: 4
+  });
+
+  const refs = {
+    canvas: document.getElementById('cv'),
+    pane: document.querySelector('.rpane'),
+    status: document.getElementById('status'),
+    dot: document.getElementById('dot'),
+    tbmsg: document.getElementById('tbmsg'),
+    tbdim: document.getElementById('tbdim'),
+    pBtn: document.getElementById('pBtn'),
+    dBtn: document.getElementById('dBtn'),
+    objBtn: document.getElementById('objBtn'),
+    m3mfBtn: document.getElementById('m3mfBtn'),
+    pIcon: document.getElementById('pIcon'),
+    dIcon: document.getElementById('dIcon'),
+    pLbl: document.getElementById('pLbl'),
+    dLbl: document.getElementById('dLbl'),
+    reportBtn: document.getElementById('reportBtn'),
+    reportDialog: document.getElementById('reportDialog'),
+    reportClose: document.getElementById('reportClose'),
+    reportTitle: document.getElementById('reportTitle'),
+    reportSummary: document.getElementById('reportSummary'),
+    reportList: document.getElementById('reportList'),
+    reportStats: document.getElementById('reportStats'),
+    validationState: document.getElementById('validationState'),
+    validationScore: document.getElementById('validationScore'),
+    validationSummary: document.getElementById('validationSummary'),
+    certBadge: document.getElementById('certBadge'),
+    filename: document.getElementById('iFilename'),
+    inputs: {
+      W: document.getElementById('iW'),
+      L: document.getElementById('iL'),
+      H: document.getElementById('iH'),
+      T: document.getElementById('iT')
+    },
+    derived: {
+      iw: document.getElementById('d_iw'),
+      il: document.getElementById('d_il'),
+      ow: document.getElementById('d_ow'),
+      ol: document.getElementById('d_ol'),
+      oh: document.getElementById('d_oh'),
+      zc: document.getElementById('d_zc'),
+      cl: document.getElementById('d_cl')
+    },
+    viewCubeMount: document.getElementById('viewCubeMount')
+  };
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x121110);
+
+  const modelRoot = new THREE.Group();
+  scene.add(modelRoot);
+
+  const grid = new THREE.GridHelper(420, 34, 0x3a352d, 0x211f1b);
+  grid.position.y = 0;
+  scene.add(grid);
+
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10000);
+  const renderer = new THREE.WebGLRenderer({
+    canvas: refs.canvas,
+    antialias: true,
+    alpha: false
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+  scene.add(new THREE.AmbientLight(0x2b2824, 0.95));
+  const keyLight = new THREE.DirectionalLight(0xfff3e2, 1.18);
+  keyLight.position.set(2.6, 4.2, 3.1);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+  fillLight.position.set(-3.2, 1.6, -2.2);
+  scene.add(fillLight);
+  const rimLight = new THREE.DirectionalLight(0xe8e4d8, 0.32);
+  rimLight.position.set(0.6, 5.5, -3.4);
+  scene.add(rimLight);
+
+  const tmpVecA = new THREE.Vector3();
+  const tmpVecB = new THREE.Vector3();
+  const tmpVecC = new THREE.Vector3();
+  const tmpEuler = new THREE.Euler();
+  const raycaster = new THREE.Raycaster();
+  const mouseNdc = new THREE.Vector2();
+
+  const nav = {
+    target: new THREE.Vector3(0, 20, 0),
+    desiredTarget: new THREE.Vector3(0, 20, 0),
+    spherical: new THREE.Spherical(240, 1.07, 0.82),
+    desiredSpherical: new THREE.Spherical(240, 1.07, 0.82),
+    interaction: null,
+    transitioning: false,
+    bounds: null,
+    fitDistance: 240,
+    roll: 0,
+    rollTarget: 0
+  };
+
+  let currentMesh = null;
+  let currentSourceModel = null;
+  let currentExportModel = null;
+  let currentModelPackageKey = '';
+  let currentCertification = null;
+  let lastFrame = performance.now();
+  const buttonArmState = new WeakMap();
+  const exportButtons = [refs.dBtn, refs.objBtn, refs.m3mfBtn];
+
+  function resize() {
+    const width = refs.pane.clientWidth;
+    const height = Math.max(220, refs.pane.clientHeight - 42);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  }
+
+  function clampPhi(phi) {
+    return THREE.MathUtils.clamp(phi, 0.08, Math.PI - 0.08);
+  }
+
+  function normalizeAngle(angle) {
+    const twoPi = Math.PI * 2;
+    let a = angle % twoPi;
+    if (a > Math.PI) a -= twoPi;
+    if (a < -Math.PI) a += twoPi;
+    return a;
+  }
+
+  function angleDelta(current, target) {
+    return normalizeAngle(target - current);
+  }
+
+  function syncCurrentToDesired() {
+    nav.target.copy(nav.desiredTarget);
+    nav.spherical.radius = nav.desiredSpherical.radius;
+    nav.spherical.phi = nav.desiredSpherical.phi;
+    nav.spherical.theta = nav.desiredSpherical.theta;
+    nav.transitioning = false;
+  }
+
+  function setCanvasCursor(mode) {
+    if (mode === 'pan') refs.canvas.style.cursor = 'move';
+    else if (mode === 'orbit') refs.canvas.style.cursor = 'grabbing';
+    else refs.canvas.style.cursor = 'grab';
+  }
+
+  function vsub(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  }
+
+  function vcrs(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
+  }
+
+  function vnrm(v) {
+    const len = Math.hypot(v[0], v[1], v[2]);
+    return len < 1e-12 ? [0, 0, 1] : [v[0] / len, v[1] / len, v[2] / len];
+  }
+
+  function triNormal(a, b, c) {
+    return vnrm(vcrs(vsub(b, a), vsub(c, a)));
+  }
+
+  function midpoint(a, b, c) {
+    return [
+      (a[0] + b[0] + c[0]) / 3,
+      (a[1] + b[1] + c[1]) / 3,
+      (a[2] + b[2] + c[2]) / 3
+    ];
+  }
+
+  function constantNormal(n) {
+    return () => n;
+  }
+
+  function getParams() {
+    return {
+      W: parseFloat(refs.inputs.W.value),
+      L: parseFloat(refs.inputs.L.value),
+      H: parseFloat(refs.inputs.H.value),
+      T: parseFloat(refs.inputs.T.value)
+    };
+  }
+
+  function modelKey(params) {
+    return [params.W, params.L, params.H, params.T].map((value) => value.toFixed(4)).join('|');
+  }
+
+  function validateParams({ W, L, H, T }) {
+    const checks = [
+      [Number.isFinite(W), 'Width must be a valid number.'],
+      [Number.isFinite(L), 'Length must be a valid number.'],
+      [Number.isFinite(H), 'Height must be a valid number.'],
+      [Number.isFinite(T), 'Tolerance must be a valid number.'],
+      [W >= 5 && W <= 500, 'Width must stay between 5 mm and 500 mm.'],
+      [L >= 5 && L <= 500, 'Length must stay between 5 mm and 500 mm.'],
+      [H >= 3 && H <= 500, 'Height must stay between 3 mm and 500 mm.'],
+      [T >= 0 && T <= 2, 'Tolerance must stay between 0 mm and 2 mm.']
+    ];
+
+    for (const [ok, message] of checks) {
+      if (!ok) throw new Error(message);
+    }
+
+    const minLength = MODEL.sphereRadius * 2 + 0.25;
+    if (L <= minLength) {
+      throw new Error(`Length must be greater than ${minLength.toFixed(2)} mm so the snap rail remains printable.`);
+    }
+
+    return { W, L, H, T };
+  }
+
+  function createBuilder() {
+    const positions = [];
+    const normals = [];
+
+    function pushTri(a, b, c, normalSource) {
+      let p1 = b;
+      let p2 = c;
+      let raw = vcrs(vsub(p1, a), vsub(p2, a));
+      if (Math.hypot(raw[0], raw[1], raw[2]) < 1e-12) return;
+
+      if (normalSource) {
+        const hint = normalSource(midpoint(a, p1, p2));
+        const dot = raw[0] * hint[0] + raw[1] * hint[1] + raw[2] * hint[2];
+        if (dot < 0) {
+          p1 = c;
+          p2 = b;
+          raw = vcrs(vsub(p1, a), vsub(p2, a));
+        }
+      }
+
+      const face = vnrm(raw);
+      const nA = normalSource ? vnrm(normalSource(a)) : face;
+      const nB = normalSource ? vnrm(normalSource(p1)) : face;
+      const nC = normalSource ? vnrm(normalSource(p2)) : face;
+
+      positions.push(...a, ...p1, ...p2);
+      normals.push(...nA, ...nB, ...nC);
+    }
+
+    function pushQuad(a, b, c, d, normalSource) {
+      pushTri(a, b, c, normalSource);
+      pushTri(a, c, d, normalSource);
+    }
+
+    return { positions, normals, pushTri, pushQuad };
+  }
+
+  function buildQuarterCircleSamples(segments) {
+    return Array.from({ length: segments + 1 }, (_, index) => {
+      const angle = (Math.PI / 2) * index / segments;
+      return {
+        sin: Math.sin(angle),
+        cos: Math.cos(angle)
+      };
+    });
+  }
+
+  function buildProfileSamples(quarterSamples) {
+    const samples = [];
+
+    for (let index = quarterSamples.length - 1; index >= 0; index -= 1) {
+      const sample = quarterSamples[index];
+      samples.push({
+        sin: -sample.sin,
+        cos: sample.cos
+      });
+    }
+
+    for (let index = 1; index < quarterSamples.length; index += 1) {
+      const sample = quarterSamples[index];
+      samples.push({
+        sin: sample.sin,
+        cos: sample.cos
+      });
+    }
+
+    return samples;
+  }
+
+  function triangleArea(a, b, c) {
+    const cross = vcrs(vsub(b, a), vsub(c, a));
+    return 0.5 * Math.hypot(cross[0], cross[1], cross[2]);
+  }
+
+  function dot3(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  function scale3(v, scalar) {
+    return [v[0] * scalar, v[1] * scalar, v[2] * scalar];
+  }
+
+  function add3(a, b) {
+    return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  }
+
+  function vertexHash(vertex) {
+    return vertex
+      .map((value) => Math.round(value / VALIDATION.weldTolerance))
+      .join('|');
+  }
+
+  function meshFromModel(model) {
+    const vertices = [];
+    const faces = [];
+    const vertexMap = new Map();
+    let collapsedTriangles = 0;
+
+    function internVertex(vertex) {
+      const key = vertexHash(vertex);
+      let index = vertexMap.get(key);
+      if (index === undefined) {
+        index = vertices.length;
+        vertices.push(vertex);
+        vertexMap.set(key, index);
+      }
+      return index;
+    }
+
+    for (let i = 0; i < model.positions.length; i += 9) {
+      const a = [model.positions[i], model.positions[i + 1], model.positions[i + 2]];
+      const b = [model.positions[i + 3], model.positions[i + 4], model.positions[i + 5]];
+      const c = [model.positions[i + 6], model.positions[i + 7], model.positions[i + 8]];
+      const face = [internVertex(a), internVertex(b), internVertex(c)];
+      if (face[0] === face[1] || face[1] === face[2] || face[0] === face[2]) {
+        collapsedTriangles += 1;
+        continue;
+      }
+      faces.push(face);
+    }
+
+    return { vertices, faces, collapsedTriangles };
+  }
+
+  function meshToModel(mesh) {
+    const positions = [];
+    const normals = [];
+
+    for (const face of mesh.faces) {
+      const a = mesh.vertices[face[0]];
+      const b = mesh.vertices[face[1]];
+      const c = mesh.vertices[face[2]];
+      const normal = triNormal(a, b, c);
+      positions.push(...a, ...b, ...c);
+      normals.push(...normal, ...normal, ...normal);
+    }
+
+    return {
+      positions,
+      normals,
+      triangleCount: mesh.faces.length
+    };
+  }
+
+  function faceSignedVolume(a, b, c) {
+    return dot3(a, vcrs(b, c)) / 6;
+  }
+
+  function faceBounds(a, b, c) {
+    return {
+      min: [
+        Math.min(a[0], b[0], c[0]),
+        Math.min(a[1], b[1], c[1]),
+        Math.min(a[2], b[2], c[2])
+      ],
+      max: [
+        Math.max(a[0], b[0], c[0]),
+        Math.max(a[1], b[1], c[1]),
+        Math.max(a[2], b[2], c[2])
+      ]
+    };
+  }
+
+  function boundsOverlap(a, b, epsilon = VALIDATION.weldTolerance) {
+    return !(
+      a.max[0] < b.min[0] - epsilon || a.min[0] > b.max[0] + epsilon ||
+      a.max[1] < b.min[1] - epsilon || a.min[1] > b.max[1] + epsilon ||
+      a.max[2] < b.min[2] - epsilon || a.min[2] > b.max[2] + epsilon
+    );
+  }
+
+  function buildEdgeMap(faces) {
+    const edgeMap = new Map();
+
+    for (let faceIndex = 0; faceIndex < faces.length; faceIndex += 1) {
+      const face = faces[faceIndex];
+      const edges = [
+        [face[0], face[1]],
+        [face[1], face[2]],
+        [face[2], face[0]]
+      ];
+
+      for (const [from, to] of edges) {
+        const a = Math.min(from, to);
+        const b = Math.max(from, to);
+        const key = `${a}|${b}`;
+        let entry = edgeMap.get(key);
+        if (!entry) {
+          entry = { a, b, refs: [] };
+          edgeMap.set(key, entry);
+        }
+        entry.refs.push({
+          faceIndex,
+          from,
+          to,
+          dir: from === a ? 1 : -1
+        });
+      }
+    }
+
+    return edgeMap;
+  }
+
+  function buildAdjacency(faces) {
+    const edgeMap = buildEdgeMap(faces);
+    const adjacency = Array.from({ length: faces.length }, () => []);
+    let boundaryEdgeCount = 0;
+    let nonManifoldEdgeCount = 0;
+    let orientationMismatchEdges = 0;
+
+    for (const edge of edgeMap.values()) {
+      if (edge.refs.length === 1) {
+        boundaryEdgeCount += 1;
+        continue;
+      }
+
+      if (edge.refs.length > 2) {
+        nonManifoldEdgeCount += 1;
+      }
+
+      for (let i = 0; i < edge.refs.length; i += 1) {
+        for (let j = i + 1; j < edge.refs.length; j += 1) {
+          const left = edge.refs[i];
+          const right = edge.refs[j];
+          const sameDirection = left.dir === right.dir;
+          if (edge.refs.length === 2 && sameDirection) {
+            orientationMismatchEdges += 1;
+          }
+          adjacency[left.faceIndex].push({
+            faceIndex: right.faceIndex,
+            sameDirection
+          });
+          adjacency[right.faceIndex].push({
+            faceIndex: left.faceIndex,
+            sameDirection
+          });
+        }
+      }
+    }
+
+    return {
+      edgeMap,
+      adjacency,
+      boundaryEdgeCount,
+      nonManifoldEdgeCount,
+      orientationMismatchEdges
+    };
+  }
+
+  function pointOnEdgeFactor(point, start, end) {
+    const minX = Math.min(start[0], end[0]) - VALIDATION.weldTolerance;
+    const maxX = Math.max(start[0], end[0]) + VALIDATION.weldTolerance;
+    const minY = Math.min(start[1], end[1]) - VALIDATION.weldTolerance;
+    const maxY = Math.max(start[1], end[1]) + VALIDATION.weldTolerance;
+    const minZ = Math.min(start[2], end[2]) - VALIDATION.weldTolerance;
+    const maxZ = Math.max(start[2], end[2]) + VALIDATION.weldTolerance;
+
+    if (
+      point[0] < minX || point[0] > maxX ||
+      point[1] < minY || point[1] > maxY ||
+      point[2] < minZ || point[2] > maxZ
+    ) {
+      return null;
+    }
+
+    const edge = vsub(end, start);
+    const rel = vsub(point, start);
+    const edgeLengthSquared = dot3(edge, edge);
+    if (edgeLengthSquared <= VALIDATION.areaTolerance) return null;
+
+    const t = dot3(rel, edge) / edgeLengthSquared;
+    if (t <= VALIDATION.weldTolerance || t >= 1 - VALIDATION.weldTolerance) return null;
+
+    const closest = add3(start, scale3(edge, t));
+    const delta = vsub(point, closest);
+    return Math.hypot(delta[0], delta[1], delta[2]) <= VALIDATION.weldTolerance * 8 ? t : null;
+  }
+
+  function thirdFaceVertex(face, a, b) {
+    return face.find((index) => index !== a && index !== b);
+  }
+
+  function splitFaceAlongEdge(face, fromIndex, toIndex, splitIndices, mesh) {
+    const opposite = thirdFaceVertex(face, fromIndex, toIndex);
+    if (opposite === undefined) return [face];
+
+    const ordered = splitIndices
+      .map((index) => ({
+        index,
+        t: pointOnEdgeFactor(mesh.vertices[index], mesh.vertices[fromIndex], mesh.vertices[toIndex])
+      }))
+      .filter((entry) => entry.t !== null)
+      .sort((left, right) => left.t - right.t);
+
+    if (!ordered.length) return [face];
+
+    const chain = [fromIndex, ...ordered.map((entry) => entry.index), toIndex];
+    const nextFaces = [];
+
+    for (let index = 0; index < chain.length - 1; index += 1) {
+      nextFaces.push([chain[index], chain[index + 1], opposite]);
+    }
+
+    return nextFaces;
+  }
+
+  function repairTJunctions(mesh, maxPasses = 8) {
+    let splitFaces = 0;
+    let insertedSplits = 0;
+
+    for (let pass = 0; pass < maxPasses; pass += 1) {
+      const topology = buildAdjacency(mesh.faces);
+      const replacements = new Map();
+
+      for (const edge of topology.edgeMap.values()) {
+        if (edge.refs.length !== 1) continue;
+        const ref = edge.refs[0];
+        if (replacements.has(ref.faceIndex)) continue;
+
+        const start = mesh.vertices[ref.from];
+        const end = mesh.vertices[ref.to];
+        const splitCandidates = [];
+
+        for (let vertexIndex = 0; vertexIndex < mesh.vertices.length; vertexIndex += 1) {
+          if (vertexIndex === ref.from || vertexIndex === ref.to) continue;
+          const t = pointOnEdgeFactor(mesh.vertices[vertexIndex], start, end);
+          if (t === null) continue;
+          splitCandidates.push({ index: vertexIndex, t });
+        }
+
+        if (!splitCandidates.length) continue;
+
+        splitCandidates.sort((left, right) => left.t - right.t);
+        const splitIndices = [];
+        let lastT = -Infinity;
+
+        for (const candidate of splitCandidates) {
+          if (Math.abs(candidate.t - lastT) <= VALIDATION.weldTolerance) continue;
+          splitIndices.push(candidate.index);
+          lastT = candidate.t;
+        }
+
+        if (splitIndices.length) {
+          replacements.set(ref.faceIndex, { ref, splitIndices });
+        }
+      }
+
+      if (!replacements.size) break;
+
+      const nextFaces = [];
+      for (let faceIndex = 0; faceIndex < mesh.faces.length; faceIndex += 1) {
+        const replacement = replacements.get(faceIndex);
+        if (!replacement) {
+          nextFaces.push(mesh.faces[faceIndex]);
+          continue;
+        }
+
+        const splitFacesForEdge = splitFaceAlongEdge(
+          mesh.faces[faceIndex],
+          replacement.ref.from,
+          replacement.ref.to,
+          replacement.splitIndices,
+          mesh
+        );
+
+        nextFaces.push(...splitFacesForEdge);
+        splitFaces += 1;
+        insertedSplits += replacement.splitIndices.length;
+      }
+
+      mesh.faces = nextFaces;
+    }
+
+    return { splitFaces, insertedSplits };
+  }
+
+  function walkFaceComponents(adjacency) {
+    const flips = Array(adjacency.length).fill(null);
+    const components = [];
+    let orientationConflicts = 0;
+
+    for (let faceIndex = 0; faceIndex < adjacency.length; faceIndex += 1) {
+      if (flips[faceIndex] !== null) continue;
+      const stack = [faceIndex];
+      const component = [];
+      flips[faceIndex] = false;
+
+      while (stack.length) {
+        const current = stack.pop();
+        component.push(current);
+        for (const neighbor of adjacency[current]) {
+          const expectedFlip = neighbor.sameDirection
+            ? !Boolean(flips[current])
+            : Boolean(flips[current]);
+          if (flips[neighbor.faceIndex] === null) {
+            flips[neighbor.faceIndex] = expectedFlip;
+            stack.push(neighbor.faceIndex);
+          } else if (flips[neighbor.faceIndex] !== expectedFlip) {
+            orientationConflicts += 1;
+          }
+        }
+      }
+
+      components.push(component);
+    }
+
+    return { flips, components, orientationConflicts };
+  }
+
+  function flipFace(face) {
+    const tmp = face[1];
+    face[1] = face[2];
+    face[2] = tmp;
+  }
+
+  function removeDegenerateFaces(mesh) {
+    const keptFaces = [];
+    let removed = 0;
+
+    for (const face of mesh.faces) {
+      const a = mesh.vertices[face[0]];
+      const b = mesh.vertices[face[1]];
+      const c = mesh.vertices[face[2]];
+      if (triangleArea(a, b, c) <= VALIDATION.areaTolerance) {
+        removed += 1;
+      } else {
+        keptFaces.push(face);
+      }
+    }
+
+    mesh.faces = keptFaces;
+    return removed;
+  }
+
+  function removeDuplicateFaces(mesh) {
+    const seen = new Set();
+    const keptFaces = [];
+    let removed = 0;
+
+    for (const face of mesh.faces) {
+      const key = face.slice().sort((a, b) => a - b).join('|');
+      if (seen.has(key)) {
+        removed += 1;
+      } else {
+        seen.add(key);
+        keptFaces.push(face);
+      }
+    }
+
+    mesh.faces = keptFaces;
+    return removed;
+  }
+
+  function componentSignedVolume(mesh, component) {
+    let volume = 0;
+    for (const faceIndex of component) {
+      const face = mesh.faces[faceIndex];
+      volume += faceSignedVolume(
+        mesh.vertices[face[0]],
+        mesh.vertices[face[1]],
+        mesh.vertices[face[2]]
+      );
+    }
+    return volume;
+  }
+
+  function repairOrientation(mesh) {
+    const topology = buildAdjacency(mesh.faces);
+    const walk = walkFaceComponents(topology.adjacency);
+    let flippedFaces = 0;
+    let flippedComponents = 0;
+
+    for (let i = 0; i < walk.flips.length; i += 1) {
+      if (!walk.flips[i]) continue;
+      flipFace(mesh.faces[i]);
+      flippedFaces += 1;
+    }
+
+    for (const component of walk.components) {
+      const signedVolume = componentSignedVolume(mesh, component);
+      if (signedVolume < -VALIDATION.volumeTolerance) {
+        for (const faceIndex of component) {
+          flipFace(mesh.faces[faceIndex]);
+        }
+        flippedFaces += component.length;
+        flippedComponents += 1;
+      }
+    }
+
+    return {
+      flippedFaces,
+      flippedComponents,
+      orientationConflicts: walk.orientationConflicts
+    };
+  }
+
+  function componentStats(mesh, component) {
+    let volume = 0;
+    let area = 0;
+    for (const faceIndex of component) {
+      const face = mesh.faces[faceIndex];
+      const a = mesh.vertices[face[0]];
+      const b = mesh.vertices[face[1]];
+      const c = mesh.vertices[face[2]];
+      volume += faceSignedVolume(a, b, c);
+      area += triangleArea(a, b, c);
+    }
+    return {
+      faceCount: component.length,
+      surfaceArea: area,
+      volume: Math.abs(volume)
+    };
+  }
+
+  function removeSmallFragments(mesh) {
+    const topology = buildAdjacency(mesh.faces);
+    const walk = walkFaceComponents(topology.adjacency);
+    if (walk.components.length <= 1) {
+      return { removedComponents: 0, removedFaces: 0 };
+    }
+
+    const stats = walk.components.map((component) => componentStats(mesh, component));
+    let dominantIndex = 0;
+    for (let i = 1; i < stats.length; i += 1) {
+      const left = stats[i];
+      const right = stats[dominantIndex];
+      if (left.faceCount > right.faceCount || (left.faceCount === right.faceCount && left.volume > right.volume)) {
+        dominantIndex = i;
+      }
+    }
+
+    const dominant = stats[dominantIndex];
+    const keepFaces = new Set();
+    let removedComponents = 0;
+    let removedFaces = 0;
+
+    for (let i = 0; i < walk.components.length; i += 1) {
+      const component = walk.components[i];
+      const stat = stats[i];
+      const keep =
+        i === dominantIndex ||
+        stat.faceCount >= dominant.faceCount * VALIDATION.fragmentTriangleRatio ||
+        (dominant.volume > VALIDATION.volumeTolerance && stat.volume >= dominant.volume * VALIDATION.fragmentVolumeRatio);
+
+      if (keep) {
+        component.forEach((faceIndex) => keepFaces.add(faceIndex));
+      } else {
+        removedComponents += 1;
+        removedFaces += component.length;
+      }
+    }
+
+    if (!removedComponents) {
+      return { removedComponents: 0, removedFaces: 0 };
+    }
+
+    mesh.faces = mesh.faces.filter((_, faceIndex) => keepFaces.has(faceIndex));
+    return { removedComponents, removedFaces };
+  }
+
+  function loopNormal(points) {
+    let normal = [0, 0, 0];
+    for (let i = 0; i < points.length; i += 1) {
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+      normal = add3(normal, [
+        (current[1] - next[1]) * (current[2] + next[2]),
+        (current[2] - next[2]) * (current[0] + next[0]),
+        (current[0] - next[0]) * (current[1] + next[1])
+      ]);
+    }
+    return vnrm(normal);
+  }
+
+  function findBoundaryLoops(edgeMap) {
+    const outgoing = new Map();
+    const unused = new Set();
+    const loops = [];
+
+    for (const edge of edgeMap.values()) {
+      if (edge.refs.length !== 1) continue;
+      const ref = edge.refs[0];
+      const start = ref.dir === 1 ? edge.a : edge.b;
+      const end = ref.dir === 1 ? edge.b : edge.a;
+      const key = `${start}|${end}`;
+      unused.add(key);
+      if (!outgoing.has(start)) outgoing.set(start, []);
+      outgoing.get(start).push({ start, end, key });
+    }
+
+    for (const key of Array.from(unused)) {
+      if (!unused.has(key)) continue;
+      const [startToken, endToken] = key.split('|');
+      const start = Number(startToken);
+      let current = Number(endToken);
+      let previous = start;
+      const loop = [start];
+      unused.delete(key);
+
+      while (current !== start && loop.length <= edgeMap.size + 2) {
+        loop.push(current);
+        const candidates = outgoing.get(current) || [];
+        const next = candidates.find((edge) => unused.has(edge.key) && edge.end !== previous) ||
+          candidates.find((edge) => unused.has(edge.key));
+        if (!next) break;
+        unused.delete(next.key);
+        previous = current;
+        current = next.end;
+      }
+
+      if (current === start && loop.length >= 3) {
+        loops.push(loop);
+      }
+    }
+
+    return loops;
+  }
+
+  function repairBoundaryLoops(mesh) {
+    const topology = buildAdjacency(mesh.faces);
+    const loops = findBoundaryLoops(topology.edgeMap);
+    if (!loops.length) {
+      return { repairedLoops: 0, attemptedLoops: 0 };
+    }
+
+    let repairedLoops = 0;
+    const attemptedLoops = Math.min(loops.length, VALIDATION.holeRepairLimit);
+
+    for (let i = 0; i < attemptedLoops; i += 1) {
+      const loop = loops[i];
+      const points = loop.map((index) => mesh.vertices[index]);
+      const normal = loopNormal(points);
+      const centroid = points.reduce((sum, point) => add3(sum, point), [0, 0, 0]);
+      const center = scale3(centroid, 1 / points.length);
+      const planeDistance = points.reduce((maxDistance, point) => {
+        const distance = Math.abs(dot3(vsub(point, center), normal));
+        return Math.max(maxDistance, distance);
+      }, 0);
+
+      if (planeDistance > VALIDATION.boundaryPlanarTolerance) continue;
+
+      const centerIndex = mesh.vertices.length;
+      mesh.vertices.push(center);
+      for (let j = 0; j < loop.length; j += 1) {
+        const a = loop[j];
+        const b = loop[(j + 1) % loop.length];
+        mesh.faces.push([b, a, centerIndex]);
+      }
+      repairedLoops += 1;
+    }
+
+    return { repairedLoops, attemptedLoops };
+  }
+
+  function segmentTriangleIntersection(p0, p1, a, b, c) {
+    const ab = vsub(b, a);
+    const ac = vsub(c, a);
+    const dir = vsub(p1, p0);
+    const pvec = vcrs(dir, ac);
+    const det = dot3(ab, pvec);
+
+    if (Math.abs(det) < VALIDATION.areaTolerance) return false;
+    const invDet = 1 / det;
+    const tvec = vsub(p0, a);
+    const u = dot3(tvec, pvec) * invDet;
+    if (u < -VALIDATION.weldTolerance || u > 1 + VALIDATION.weldTolerance) return false;
+    const qvec = vcrs(tvec, ab);
+    const v = dot3(dir, qvec) * invDet;
+    if (v < -VALIDATION.weldTolerance || u + v > 1 + VALIDATION.weldTolerance) return false;
+    const t = dot3(ac, qvec) * invDet;
+    return t >= -VALIDATION.weldTolerance && t <= 1 + VALIDATION.weldTolerance;
+  }
+
+  function projectTo2D(point, axis) {
+    if (axis === 0) return [point[1], point[2]];
+    if (axis === 1) return [point[0], point[2]];
+    return [point[0], point[1]];
+  }
+
+  function orient2d(a, b, c) {
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  }
+
+  function onSegment2d(a, b, p) {
+    return (
+      Math.min(a[0], b[0]) - VALIDATION.weldTolerance <= p[0] &&
+      p[0] <= Math.max(a[0], b[0]) + VALIDATION.weldTolerance &&
+      Math.min(a[1], b[1]) - VALIDATION.weldTolerance <= p[1] &&
+      p[1] <= Math.max(a[1], b[1]) + VALIDATION.weldTolerance
+    );
+  }
+
+  function segmentsIntersect2d(a, b, c, d) {
+    const o1 = orient2d(a, b, c);
+    const o2 = orient2d(a, b, d);
+    const o3 = orient2d(c, d, a);
+    const o4 = orient2d(c, d, b);
+
+    if ((o1 > 0 && o2 < 0 || o1 < 0 && o2 > 0) && (o3 > 0 && o4 < 0 || o3 < 0 && o4 > 0)) {
+      return true;
+    }
+
+    if (Math.abs(o1) <= VALIDATION.weldTolerance && onSegment2d(a, b, c)) return true;
+    if (Math.abs(o2) <= VALIDATION.weldTolerance && onSegment2d(a, b, d)) return true;
+    if (Math.abs(o3) <= VALIDATION.weldTolerance && onSegment2d(c, d, a)) return true;
+    if (Math.abs(o4) <= VALIDATION.weldTolerance && onSegment2d(c, d, b)) return true;
+
+    return false;
+  }
+
+  function pointInTriangle2d(point, a, b, c) {
+    const o1 = orient2d(point, a, b);
+    const o2 = orient2d(point, b, c);
+    const o3 = orient2d(point, c, a);
+    const hasNegative = o1 < -VALIDATION.weldTolerance || o2 < -VALIDATION.weldTolerance || o3 < -VALIDATION.weldTolerance;
+    const hasPositive = o1 > VALIDATION.weldTolerance || o2 > VALIDATION.weldTolerance || o3 > VALIDATION.weldTolerance;
+    return !(hasNegative && hasPositive);
+  }
+
+  function coplanarTrianglesIntersect(a, b, c, d, e, f, normal) {
+    const absNormal = normal.map((value) => Math.abs(value));
+    const axis = absNormal[0] > absNormal[1] && absNormal[0] > absNormal[2]
+      ? 0
+      : absNormal[1] > absNormal[2] ? 1 : 2;
+
+    const triA = [projectTo2D(a, axis), projectTo2D(b, axis), projectTo2D(c, axis)];
+    const triB = [projectTo2D(d, axis), projectTo2D(e, axis), projectTo2D(f, axis)];
+    const edgesA = [[0, 1], [1, 2], [2, 0]];
+    const edgesB = [[0, 1], [1, 2], [2, 0]];
+
+    for (const [i0, i1] of edgesA) {
+      for (const [j0, j1] of edgesB) {
+        if (segmentsIntersect2d(triA[i0], triA[i1], triB[j0], triB[j1])) return true;
+      }
+    }
+
+    return pointInTriangle2d(triA[0], triB[0], triB[1], triB[2]) ||
+      pointInTriangle2d(triB[0], triA[0], triA[1], triA[2]);
+  }
+
+  function trianglesIntersect(a, b, c, d, e, f) {
+    const normalA = vcrs(vsub(b, a), vsub(c, a));
+    const normalB = vcrs(vsub(e, d), vsub(f, d));
+    const lengthA = Math.hypot(normalA[0], normalA[1], normalA[2]);
+    const lengthB = Math.hypot(normalB[0], normalB[1], normalB[2]);
+
+    if (lengthA <= VALIDATION.areaTolerance || lengthB <= VALIDATION.areaTolerance) return false;
+
+    const planeA = vnrm(normalA);
+    const distD = dot3(planeA, vsub(d, a));
+    const distE = dot3(planeA, vsub(e, a));
+    const distF = dot3(planeA, vsub(f, a));
+    if ((distD > VALIDATION.weldTolerance && distE > VALIDATION.weldTolerance && distF > VALIDATION.weldTolerance) ||
+      (distD < -VALIDATION.weldTolerance && distE < -VALIDATION.weldTolerance && distF < -VALIDATION.weldTolerance)) {
+      return false;
+    }
+
+    const planeB = vnrm(normalB);
+    const distA = dot3(planeB, vsub(a, d));
+    const distB = dot3(planeB, vsub(b, d));
+    const distC = dot3(planeB, vsub(c, d));
+    if ((distA > VALIDATION.weldTolerance && distB > VALIDATION.weldTolerance && distC > VALIDATION.weldTolerance) ||
+      (distA < -VALIDATION.weldTolerance && distB < -VALIDATION.weldTolerance && distC < -VALIDATION.weldTolerance)) {
+      return false;
+    }
+
+    const coplanarA = Math.abs(distD) <= VALIDATION.weldTolerance && Math.abs(distE) <= VALIDATION.weldTolerance && Math.abs(distF) <= VALIDATION.weldTolerance;
+    const coplanarB = Math.abs(distA) <= VALIDATION.weldTolerance && Math.abs(distB) <= VALIDATION.weldTolerance && Math.abs(distC) <= VALIDATION.weldTolerance;
+    if (coplanarA && coplanarB) {
+      return coplanarTrianglesIntersect(a, b, c, d, e, f, planeA);
+    }
+
+    const segmentsA = [[a, b], [b, c], [c, a]];
+    const segmentsB = [[d, e], [e, f], [f, d]];
+    for (const [start, end] of segmentsA) {
+      if (segmentTriangleIntersection(start, end, d, e, f)) return true;
+    }
+    for (const [start, end] of segmentsB) {
+      if (segmentTriangleIntersection(start, end, a, b, c)) return true;
+    }
+    return false;
+  }
+
+  function detectSelfIntersections(mesh) {
+    if (mesh.faces.length < 2) return 0;
+    const faceEntries = mesh.faces.map((face) => {
+      const a = mesh.vertices[face[0]];
+      const b = mesh.vertices[face[1]];
+      const c = mesh.vertices[face[2]];
+      return { face, points: [a, b, c], bounds: faceBounds(a, b, c) };
+    });
+
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (const entry of faceEntries) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        min[axis] = Math.min(min[axis], entry.bounds.min[axis]);
+        max[axis] = Math.max(max[axis], entry.bounds.max[axis]);
+      }
+    }
+
+    const span = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+    const volume = Math.max(span[0] * span[1] * span[2], 1);
+    const cellSize = Math.max(Math.cbrt(volume / Math.max(faceEntries.length, 1)) * 1.35, 1);
+    const buckets = new Map();
+    const tested = new Set();
+    let intersections = 0;
+
+    function addToBucket(key, faceIndex) {
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(faceIndex);
+    }
+
+    for (let faceIndex = 0; faceIndex < faceEntries.length; faceIndex += 1) {
+      const bounds = faceEntries[faceIndex].bounds;
+      const minCell = bounds.min.map((value, axis) => Math.floor((value - min[axis]) / cellSize));
+      const maxCell = bounds.max.map((value, axis) => Math.floor((value - min[axis]) / cellSize));
+      for (let x = minCell[0]; x <= maxCell[0]; x += 1) {
+        for (let y = minCell[1]; y <= maxCell[1]; y += 1) {
+          for (let z = minCell[2]; z <= maxCell[2]; z += 1) {
+            addToBucket(`${x}|${y}|${z}`, faceIndex);
+          }
+        }
+      }
+    }
+
+    for (const indices of buckets.values()) {
+      if (indices.length < 2) continue;
+      for (let i = 0; i < indices.length; i += 1) {
+        for (let j = i + 1; j < indices.length; j += 1) {
+          const leftIndex = indices[i];
+          const rightIndex = indices[j];
+          const pairKey = leftIndex < rightIndex ? `${leftIndex}|${rightIndex}` : `${rightIndex}|${leftIndex}`;
+          if (tested.has(pairKey)) continue;
+          tested.add(pairKey);
+
+          const left = faceEntries[leftIndex];
+          const right = faceEntries[rightIndex];
+          const sharedVertices = left.face.filter((vertexIndex) => right.face.includes(vertexIndex)).length;
+          if (sharedVertices > 0) continue;
+          if (!boundsOverlap(left.bounds, right.bounds)) continue;
+          if (trianglesIntersect(
+            left.points[0], left.points[1], left.points[2],
+            right.points[0], right.points[1], right.points[2]
+          )) {
+            intersections += 1;
+          }
+        }
+      }
+    }
+
+    return intersections;
+  }
+
+  function meshMetrics(mesh) {
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    let surfaceArea = 0;
+    let signedVolume = 0;
+
+    for (const vertex of mesh.vertices) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        min[axis] = Math.min(min[axis], vertex[axis]);
+        max[axis] = Math.max(max[axis], vertex[axis]);
+      }
+    }
+
+    for (const face of mesh.faces) {
+      const a = mesh.vertices[face[0]];
+      const b = mesh.vertices[face[1]];
+      const c = mesh.vertices[face[2]];
+      surfaceArea += triangleArea(a, b, c);
+      signedVolume += faceSignedVolume(a, b, c);
+    }
+
+    return {
+      triangleCount: mesh.faces.length,
+      vertexCount: mesh.vertices.length,
+      surfaceArea,
+      volume: Math.abs(signedVolume),
+      bounds: { min, max }
+    };
+  }
+
+  function formatNumber(value, digits = 2) {
+    return Number.isFinite(value) ? value.toFixed(digits) : '-';
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return '-';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  function estimateObjBytes(mesh) {
+    return mesh.vertices.length * 28 + mesh.faces.length * 18 + 128;
+  }
+
+  function estimate3mfBytes(mesh) {
+    return mesh.vertices.length * 32 + mesh.faces.length * 26 + 2048;
+  }
+
+  function computePrintabilityScore(issues) {
+    let score = 100;
+    score -= Math.min(issues.boundaryEdgeCount * 2, 36);
+    score -= Math.min(issues.nonManifoldEdgeCount * 18, 32);
+    score -= Math.min(issues.orientationConflicts * 8, 16);
+    score -= Math.min(issues.remainingDegenerate * 10, 20);
+    score -= Math.min(issues.selfIntersections * 4, 18);
+    return Math.max(0, Math.round(score));
+  }
+
+  function validateAndRepairModel(model) {
+    const mesh = meshFromModel(model);
+    const repairs = [];
+
+    const initialCollapsed = mesh.collapsedTriangles;
+    if (initialCollapsed) {
+      repairs.push(`${initialCollapsed} collapsed triangles discarded during vertex welding.`);
+    }
+
+    const degenerateRemoved = removeDegenerateFaces(mesh);
+    if (degenerateRemoved) {
+      repairs.push(`${degenerateRemoved} degenerate triangles removed.`);
+    }
+
+    const duplicateFacesRemoved = removeDuplicateFaces(mesh);
+    if (duplicateFacesRemoved) {
+      repairs.push(`${duplicateFacesRemoved} duplicate triangles removed.`);
+    }
+
+    const tJunctionRepair = repairTJunctions(mesh);
+    if (tJunctionRepair.splitFaces) {
+      repairs.push(`${tJunctionRepair.splitFaces} T-junction seam face${tJunctionRepair.splitFaces === 1 ? '' : 's'} split across ${tJunctionRepair.insertedSplits} welded vertex alignment${tJunctionRepair.insertedSplits === 1 ? '' : 's'}.`);
+    }
+
+    const orientationRepair = repairOrientation(mesh);
+    if (orientationRepair.flippedFaces) {
+      repairs.push(`${orientationRepair.flippedFaces} triangle windings corrected for consistent normals.`);
+    }
+
+    const fragmentRepair = removeSmallFragments(mesh);
+    if (fragmentRepair.removedComponents) {
+      repairs.push(`${fragmentRepair.removedComponents} floating fragment${fragmentRepair.removedComponents === 1 ? '' : 's'} removed.`);
+    }
+
+    const holeRepair = repairBoundaryLoops(mesh);
+    if (holeRepair.repairedLoops) {
+      repairs.push(`${holeRepair.repairedLoops} surface hole${holeRepair.repairedLoops === 1 ? '' : 's'} repaired.`);
+      const postHoleOrientation = repairOrientation(mesh);
+      if (postHoleOrientation.flippedFaces) {
+        repairs.push(`${postHoleOrientation.flippedFaces} additional triangle windings corrected after hole repair.`);
+      }
+    }
+
+    const topology = buildAdjacency(mesh.faces);
+    const walk = walkFaceComponents(topology.adjacency);
+    const selfIntersections = detectSelfIntersections(mesh);
+    const metrics = meshMetrics(mesh);
+    const remainingDegenerate = mesh.faces.reduce((count, face) => {
+      const a = mesh.vertices[face[0]];
+      const b = mesh.vertices[face[1]];
+      const c = mesh.vertices[face[2]];
+      return count + (triangleArea(a, b, c) <= VALIDATION.areaTolerance ? 1 : 0);
+    }, 0);
+
+    const issues = {
+      boundaryEdgeCount: topology.boundaryEdgeCount,
+      nonManifoldEdgeCount: topology.nonManifoldEdgeCount,
+      orientationConflicts: walk.orientationConflicts,
+      selfIntersections,
+      remainingDegenerate
+    };
+
+    const criticalIssues = {
+      boundaryEdgeCount: issues.boundaryEdgeCount,
+      nonManifoldEdgeCount: issues.nonManifoldEdgeCount,
+      orientationConflicts: issues.orientationConflicts,
+      remainingDegenerate: issues.remainingDegenerate,
+      selfIntersections: issues.selfIntersections
+    };
+
+    const certified =
+      mesh.faces.length > 0 &&
+      criticalIssues.boundaryEdgeCount === 0 &&
+      criticalIssues.nonManifoldEdgeCount === 0 &&
+      criticalIssues.orientationConflicts === 0 &&
+      criticalIssues.remainingDegenerate === 0;
+
+    const score = certified ? 100 : computePrintabilityScore(criticalIssues);
+    const reportItems = [];
+
+    if (certified) {
+      reportItems.push('Watertight mesh verified after validation and repair.');
+      reportItems.push('No non-manifold geometry detected in the repaired mesh.');
+      reportItems.push('Triangle winding normalized for export and slicer compatibility.');
+      reportItems.push(repairs.length ? `Repairs applied: ${repairs.join(' ')}` : 'No repairs were required; the generated mesh passed on the first validation run.');
+      reportItems.push(
+        issues.selfIntersections
+          ? `${issues.selfIntersections} possible self-intersection candidate${issues.selfIntersections === 1 ? '' : 's'} remain in the browser fast-path screen and should be confirmed in the backend repair pipeline.`
+          : 'No self-intersection candidates were detected in the browser fast-path screen.'
+      );
+    } else {
+      reportItems.push(mesh.faces.length ? 'Geometry generated, but critical mesh issues remain.' : 'The current inputs produced an empty mesh.');
+      reportItems.push(criticalIssues.boundaryEdgeCount ? `${criticalIssues.boundaryEdgeCount} open edge${criticalIssues.boundaryEdgeCount === 1 ? '' : 's'} remain after repair.` : 'Watertight shell verified.');
+      reportItems.push(criticalIssues.nonManifoldEdgeCount ? `${criticalIssues.nonManifoldEdgeCount} non-manifold edge group${criticalIssues.nonManifoldEdgeCount === 1 ? '' : 's'} remain.` : 'No non-manifold geometry detected.');
+      reportItems.push(criticalIssues.orientationConflicts ? `${criticalIssues.orientationConflicts} orientation conflict${criticalIssues.orientationConflicts === 1 ? '' : 's'} remain after repair.` : 'No orientation conflicts remain.');
+      reportItems.push(criticalIssues.remainingDegenerate ? `${criticalIssues.remainingDegenerate} degenerate triangle${criticalIssues.remainingDegenerate === 1 ? '' : 's'} remain after repair.` : 'No degenerate triangles remain.');
+      reportItems.push(repairs.length ? `Repairs applied: ${repairs.join(' ')}` : 'No automatic repairs were possible.');
+    }
+
+    const summary = certified
+      ? 'Model validation complete. This mesh is certified printable and ready for export.'
+      : 'We were unable to generate a printable model. Please adjust your parameters and try again.';
+
+    return {
+      pass: certified,
+      score,
+      mesh,
+      finalModel: meshToModel(mesh),
+      report: {
+        title: certified ? 'Certified Printable Mesh' : 'Mesh Repair Failed',
+        summary,
+        repairs,
+        items: reportItems,
+        metrics: {
+          sourceTriangleCount: model.triangleCount,
+          triangleCount: metrics.triangleCount,
+          vertexCount: metrics.vertexCount,
+          surfaceArea: metrics.surfaceArea,
+          volume: metrics.volume,
+          stlBytes: 84 + metrics.triangleCount * 50,
+          objBytes: estimateObjBytes(mesh),
+          m3mfBytes: estimate3mfBytes(mesh)
+        },
+        issues
+      }
+    };
+  }
+
+  function buildModel(W, L, H, tolerance) {
+    const innerW = W + tolerance;
+    const innerL = L + tolerance;
+    const innerH = H;
+    const outerW = innerW + 2 * MODEL.wall;
+    const outerL = innerL + 2 * MODEL.wall;
+    const outerH = innerH + MODEL.bottom;
+    const r = MODEL.sphereRadius;
+    const zCenter = MODEL.bottom + r;
+    const railStart = r * 2;
+    const railEnd = L;
+    const holeZ0 = zCenter - r;
+    const holeZ1 = zCenter + r;
+    const innerX0 = MODEL.wall;
+    const innerX1 = MODEL.wall + innerW;
+    const innerY0 = MODEL.wall;
+    const innerY1 = MODEL.wall + innerL;
+    const quarterSamples = buildQuarterCircleSamples(MODEL.curveSegments);
+    const profileSamples = buildProfileSamples(quarterSamples);
+    const segRailY = Math.max(8, Math.ceil((railEnd - railStart) / MODEL.railLengthStep));
+    const railYSamples = Array.from({ length: segRailY + 1 }, (_, index) => (
+      railStart + ((railEnd - railStart) * index) / segRailY
+    ));
+    const builder = createBuilder();
+
+    const left = constantNormal([-1, 0, 0]);
+    const right = constantNormal([1, 0, 0]);
+    const front = constantNormal([0, -1, 0]);
+    const back = constantNormal([0, 1, 0]);
+    const up = constantNormal([0, 0, 1]);
+    const down = constantNormal([0, 0, -1]);
+
+    builder.pushQuad([0, 0, 0], [outerW, 0, 0], [outerW, outerL, 0], [0, outerL, 0], down);
+    builder.pushQuad([0, 0, 0], [outerW, 0, 0], [outerW, 0, holeZ0], [0, 0, holeZ0], front);
+    builder.pushQuad([0, outerL, 0], [outerW, outerL, 0], [outerW, outerL, holeZ0], [0, outerL, holeZ0], back);
+
+    for (let index = 0; index < profileSamples.length - 1; index += 1) {
+      const sampleA = profileSamples[index];
+      const sampleB = profileSamples[index + 1];
+      const zA = zCenter + r * sampleA.sin;
+      const zB = zCenter + r * sampleB.sin;
+      builder.pushQuad([0, 0, zA], [outerW, 0, zA], [outerW, 0, zB], [0, 0, zB], front);
+      builder.pushQuad([0, outerL, zA], [outerW, outerL, zA], [outerW, outerL, zB], [0, outerL, zB], back);
+    }
+
+    builder.pushQuad([0, 0, holeZ1], [outerW, 0, holeZ1], [outerW, 0, outerH], [0, 0, outerH], front);
+    builder.pushQuad([0, outerL, holeZ1], [outerW, outerL, holeZ1], [outerW, outerL, outerH], [0, outerL, outerH], back);
+
+    builder.pushQuad([0, 0, holeZ1], [0, railStart, holeZ1], [0, railStart, outerH], [0, 0, outerH], left);
+    builder.pushQuad([0, railEnd, holeZ1], [0, outerL, holeZ1], [0, outerL, outerH], [0, railEnd, outerH], left);
+    builder.pushQuad([0, 0, 0], [0, railStart, 0], [0, railStart, holeZ0], [0, 0, holeZ0], left);
+    builder.pushQuad([0, railEnd, 0], [0, outerL, 0], [0, outerL, holeZ0], [0, railEnd, holeZ0], left);
+    builder.pushQuad([outerW, 0, holeZ1], [outerW, railStart, holeZ1], [outerW, railStart, outerH], [outerW, 0, outerH], right);
+    builder.pushQuad([outerW, railEnd, holeZ1], [outerW, outerL, holeZ1], [outerW, outerL, outerH], [outerW, railEnd, outerH], right);
+    builder.pushQuad([outerW, 0, 0], [outerW, railStart, 0], [outerW, railStart, holeZ0], [outerW, 0, holeZ0], right);
+    builder.pushQuad([outerW, railEnd, 0], [outerW, outerL, 0], [outerW, outerL, holeZ0], [outerW, railEnd, holeZ0], right);
+
+    for (let index = 0; index < railYSamples.length - 1; index += 1) {
+      const yA = railYSamples[index];
+      const yB = railYSamples[index + 1];
+      builder.pushQuad([0, yA, holeZ1], [0, yB, holeZ1], [0, yB, outerH], [0, yA, outerH], left);
+      builder.pushQuad([0, yA, 0], [0, yB, 0], [0, yB, holeZ0], [0, yA, holeZ0], left);
+      builder.pushQuad([outerW, yA, holeZ1], [outerW, yB, holeZ1], [outerW, yB, outerH], [outerW, yA, outerH], right);
+      builder.pushQuad([outerW, yA, 0], [outerW, yB, 0], [outerW, yB, holeZ0], [outerW, yA, holeZ0], right);
+    }
+
+    for (let index = 0; index < profileSamples.length - 1; index += 1) {
+      const sampleA = profileSamples[index];
+      const sampleB = profileSamples[index + 1];
+      const zA = zCenter + r * sampleA.sin;
+      const zB = zCenter + r * sampleB.sin;
+      const frontA = railStart - r * sampleA.cos;
+      const frontB = railStart - r * sampleB.cos;
+      const backA = railEnd + r * sampleA.cos;
+      const backB = railEnd + r * sampleB.cos;
+
+      builder.pushQuad([0, 0, zA], [0, frontA, zA], [0, frontB, zB], [0, 0, zB], left);
+      builder.pushQuad([0, backA, zA], [0, outerL, zA], [0, outerL, zB], [0, backB, zB], left);
+      builder.pushQuad([outerW, 0, zA], [outerW, frontA, zA], [outerW, frontB, zB], [outerW, 0, zB], right);
+      builder.pushQuad([outerW, backA, zA], [outerW, outerL, zA], [outerW, outerL, zB], [outerW, backB, zB], right);
+    }
+
+    builder.pushQuad([0, 0, outerH], [outerW, 0, outerH], [outerW, innerY0, outerH], [0, innerY0, outerH], up);
+    builder.pushQuad([0, innerY1, outerH], [outerW, innerY1, outerH], [outerW, outerL, outerH], [0, outerL, outerH], up);
+    builder.pushQuad([0, innerY0, outerH], [innerX0, innerY0, outerH], [innerX0, innerY1, outerH], [0, innerY1, outerH], up);
+    builder.pushQuad([innerX1, innerY0, outerH], [outerW, innerY0, outerH], [outerW, innerY1, outerH], [innerX1, innerY1, outerH], up);
+
+    builder.pushQuad([innerX0, innerY0, MODEL.bottom], [innerX1, innerY0, MODEL.bottom], [innerX1, innerY1, MODEL.bottom], [innerX0, innerY1, MODEL.bottom], up);
+    builder.pushQuad([innerX0, innerY0, MODEL.bottom], [innerX1, innerY0, MODEL.bottom], [innerX1, innerY0, outerH], [innerX0, innerY0, outerH], back);
+    builder.pushQuad([innerX0, innerY1, MODEL.bottom], [innerX1, innerY1, MODEL.bottom], [innerX1, innerY1, outerH], [innerX0, innerY1, outerH], front);
+    builder.pushQuad([innerX0, innerY0, MODEL.bottom], [innerX0, innerY1, MODEL.bottom], [innerX0, innerY1, outerH], [innerX0, innerY0, outerH], right);
+    builder.pushQuad([innerX1, innerY0, MODEL.bottom], [innerX1, innerY1, MODEL.bottom], [innerX1, innerY1, outerH], [innerX1, innerY0, outerH], left);
+
+    function addRail(sideX, sideSign) {
+      const railNormal = (p) => [p[0] - sideX, 0, p[2] - zCenter];
+      for (let indexY = 0; indexY < railYSamples.length - 1; indexY += 1) {
+        const yA = railYSamples[indexY];
+        const yB = railYSamples[indexY + 1];
+        for (let index = 0; index < profileSamples.length - 1; index += 1) {
+          const sampleA = profileSamples[index];
+          const sampleB = profileSamples[index + 1];
+          const pA = [sideX + sideSign * r * sampleA.cos, yA, zCenter + r * sampleA.sin];
+          const pB = [sideX + sideSign * r * sampleA.cos, yB, zCenter + r * sampleA.sin];
+          const pC = [sideX + sideSign * r * sampleB.cos, yB, zCenter + r * sampleB.sin];
+          const pD = [sideX + sideSign * r * sampleB.cos, yA, zCenter + r * sampleB.sin];
+          builder.pushQuad(pA, pB, pC, pD, railNormal);
+        }
+      }
+    }
+
+    function addEndCap(sideX, centerY, sideSign, endSign) {
+      const capNormal = (p) => [p[0] - sideX, p[1] - centerY, p[2] - zCenter];
+      const point = (quarterSample, profileSample) => [
+        sideX + sideSign * r * quarterSample.sin * profileSample.cos,
+        centerY + endSign * r * quarterSample.cos,
+        zCenter + r * quarterSample.sin * profileSample.sin
+      ];
+
+      for (let alphaIndex = 0; alphaIndex < quarterSamples.length - 1; alphaIndex += 1) {
+        const alphaA = quarterSamples[alphaIndex];
+        const alphaB = quarterSamples[alphaIndex + 1];
+        for (let betaIndex = 0; betaIndex < profileSamples.length - 1; betaIndex += 1) {
+          const betaA = profileSamples[betaIndex];
+          const betaB = profileSamples[betaIndex + 1];
+
+          builder.pushQuad(
+            point(alphaA, betaA),
+            point(alphaB, betaA),
+            point(alphaB, betaB),
+            point(alphaA, betaB),
+            capNormal
+          );
+        }
+      }
+    }
+
+    addRail(0, -1);
+    addRail(outerW, 1);
+    addEndCap(0, railStart, -1, -1);
+    addEndCap(0, railEnd, -1, 1);
+    addEndCap(outerW, railStart, 1, -1);
+    addEndCap(outerW, railEnd, 1, 1);
+
+    return {
+      positions: builder.positions,
+      normals: builder.normals,
+      triangleCount: builder.positions.length / 9
+    };
+  }
+
+  function modelToPreviewGeometry(model) {
+    const positions = [];
+    const normals = [];
+    for (let i = 0; i < model.positions.length; i += 3) {
+      positions.push(model.positions[i], model.positions[i + 2], model.positions[i + 1]);
+      normals.push(model.normals[i], model.normals[i + 2], model.normals[i + 1]);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    return geometry;
+  }
+
+  function clearPreview() {
+    if (!currentMesh) return;
+    modelRoot.remove(currentMesh);
+    currentMesh.geometry.dispose();
+    currentMesh.material.dispose();
+    currentMesh = null;
+    nav.bounds = null;
+  }
+
+  function fitDistanceForBounds(bounds, extraScale = 1.16) {
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+    const halfFovY = THREE.MathUtils.degToRad(camera.fov * 0.5);
+    const halfFovX = Math.atan(Math.tan(halfFovY) * camera.aspect);
+    const distY = sphere.radius / Math.sin(Math.max(halfFovY, 0.01));
+    const distX = sphere.radius / Math.sin(Math.max(halfFovX, 0.01));
+    return Math.max(distX, distY) * extraScale;
+  }
+
+  function animateToView(viewName) {
+  if (!nav.bounds) return;
+  const resolvedView = viewName === 'home' ? HOME_VIEW_KEY : viewName;
+  const direction = VIEW_PRESETS[resolvedView];
+  if (!direction) return;
+
+  const center = nav.bounds.getCenter(new THREE.Vector3());
+  const isCornerView = resolvedView.startsWith('corner-');
+  const distance = fitDistanceForBounds(nav.bounds, viewName === 'home' || isCornerView ? 1.28 : 1.14);
+  const offset = direction.clone().multiplyScalar(distance);
+  const spherical = new THREE.Spherical().setFromVector3(offset);
+
+  nav.desiredTarget.copy(center);
+  nav.desiredSpherical.radius = THREE.MathUtils.clamp(distance, MODEL.minRadius, MODEL.maxRadius);
+  nav.desiredSpherical.phi = clampPhi(spherical.phi);
+  nav.desiredSpherical.theta = spherical.theta;
+  nav.transitioning = true;
+}
+
+  function fitCurrentModel(animate = true) {
+    if (!nav.bounds) return;
+    const center = nav.bounds.getCenter(new THREE.Vector3());
+    const distance = fitDistanceForBounds(nav.bounds);
+    nav.desiredTarget.copy(center);
+    nav.desiredSpherical.radius = THREE.MathUtils.clamp(distance, MODEL.minRadius, MODEL.maxRadius);
+    if (animate) nav.transitioning = true;
+    else syncCurrentToDesired();
+    nav.fitDistance = distance;
+  }
+
+  function showPreview(model) {
+    const geometry = modelToPreviewGeometry(model);
+    clearPreview();
+
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xd8232a,
+      roughness: 0.42,
+      metalness: 0.05,
+      emissive: 0x420a0c,
+      emissiveIntensity: 0.4,
+      side: THREE.DoubleSide
+    });
+
+    currentMesh = new THREE.Mesh(geometry, material);
+
+    const localBounds = geometry.boundingBox.clone();
+    const centerX = (localBounds.min.x + localBounds.max.x) * 0.5;
+    const centerZ = (localBounds.min.z + localBounds.max.z) * 0.5;
+    currentMesh.position.set(-centerX, -localBounds.min.y, -centerZ);
+    modelRoot.add(currentMesh);
+
+    nav.bounds = localBounds.translate(currentMesh.position.clone());
+    nav.fitDistance = fitDistanceForBounds(nav.bounds);
+    fitCurrentModel(false);
+  }
+
+  function buildSTLBuffer(model) {
+    const triCount = model.positions.length / 9;
+    const buffer = new ArrayBuffer(84 + triCount * 50);
+    const view = new DataView(buffer);
+    const header = 'CapGen parametric snap-cap STL';
+
+    for (let i = 0; i < 80; i += 1) {
+      view.setUint8(i, i < header.length ? header.charCodeAt(i) : 0);
+    }
+    view.setUint32(80, triCount, true);
+
+    let offset = 84;
+    for (let i = 0; i < model.positions.length; i += 9) {
+      const a = [model.positions[i], model.positions[i + 1], model.positions[i + 2]];
+      const b = [model.positions[i + 3], model.positions[i + 4], model.positions[i + 5]];
+      const c = [model.positions[i + 6], model.positions[i + 7], model.positions[i + 8]];
+      const n = triNormal(a, b, c);
+
+      view.setFloat32(offset, n[0], true); offset += 4;
+      view.setFloat32(offset, n[1], true); offset += 4;
+      view.setFloat32(offset, n[2], true); offset += 4;
+
+      for (const v of [a, b, c]) {
+        view.setFloat32(offset, v[0], true); offset += 4;
+        view.setFloat32(offset, v[1], true); offset += 4;
+        view.setFloat32(offset, v[2], true); offset += 4;
+      }
+
+      view.setUint16(offset, 0, true);
+      offset += 2;
+    }
+
+    return buffer;
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildOBJText(mesh) {
+    const lines = ['# CapGen Certified OBJ'];
+    for (const vertex of mesh.vertices) {
+      lines.push(`v ${vertex[0]} ${vertex[1]} ${vertex[2]}`);
+    }
+    for (const face of mesh.faces) {
+      lines.push(`f ${face[0] + 1} ${face[1] + 1} ${face[2] + 1}`);
+    }
+    return `${lines.join('\n')}\n`;
+  }
+
+  function buildCrcTable() {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i += 1) {
+      let value = i;
+      for (let bit = 0; bit < 8; bit += 1) {
+        value = (value & 1) ? (0xEDB88320 ^ (value >>> 1)) : (value >>> 1);
+      }
+      table[i] = value >>> 0;
+    }
+    return table;
+  }
+
+  const textEncoder = new TextEncoder();
+  const crcTable = buildCrcTable();
+
+  function toUint8Array(content) {
+    return content instanceof Uint8Array ? content : textEncoder.encode(content);
+  }
+
+  function crc32(bytes) {
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i += 1) {
+      crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function writeUint16(view, offset, value) {
+    view.setUint16(offset, value, true);
+    return offset + 2;
+  }
+
+  function writeUint32(view, offset, value) {
+    view.setUint32(offset, value, true);
+    return offset + 4;
+  }
+
+  function createZip(entries) {
+    const prepared = entries.map((entry) => {
+      const nameBytes = textEncoder.encode(entry.name);
+      const dataBytes = toUint8Array(entry.data);
+      return {
+        name: entry.name,
+        nameBytes,
+        dataBytes,
+        crc: crc32(dataBytes)
+      };
+    });
+
+    let localSize = 0;
+    let centralSize = 0;
+    for (const entry of prepared) {
+      localSize += 30 + entry.nameBytes.length + entry.dataBytes.length;
+      centralSize += 46 + entry.nameBytes.length;
+    }
+
+    const buffer = new ArrayBuffer(localSize + centralSize + 22);
+    const view = new DataView(buffer);
+    const bytes = new Uint8Array(buffer);
+    let offset = 0;
+    const centralEntries = [];
+
+    for (const entry of prepared) {
+      const localOffset = offset;
+      offset = writeUint32(view, offset, 0x04034B50);
+      offset = writeUint16(view, offset, 20);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint32(view, offset, entry.crc);
+      offset = writeUint32(view, offset, entry.dataBytes.length);
+      offset = writeUint32(view, offset, entry.dataBytes.length);
+      offset = writeUint16(view, offset, entry.nameBytes.length);
+      offset = writeUint16(view, offset, 0);
+      bytes.set(entry.nameBytes, offset);
+      offset += entry.nameBytes.length;
+      bytes.set(entry.dataBytes, offset);
+      offset += entry.dataBytes.length;
+      centralEntries.push({ ...entry, localOffset });
+    }
+
+    const centralOffset = offset;
+    for (const entry of centralEntries) {
+      offset = writeUint32(view, offset, 0x02014B50);
+      offset = writeUint16(view, offset, 20);
+      offset = writeUint16(view, offset, 20);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint32(view, offset, entry.crc);
+      offset = writeUint32(view, offset, entry.dataBytes.length);
+      offset = writeUint32(view, offset, entry.dataBytes.length);
+      offset = writeUint16(view, offset, entry.nameBytes.length);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint16(view, offset, 0);
+      offset = writeUint32(view, offset, 0);
+      offset = writeUint32(view, offset, entry.localOffset);
+      bytes.set(entry.nameBytes, offset);
+      offset += entry.nameBytes.length;
+    }
+
+    const centralLength = offset - centralOffset;
+    offset = writeUint32(view, offset, 0x06054B50);
+    offset = writeUint16(view, offset, 0);
+    offset = writeUint16(view, offset, 0);
+    offset = writeUint16(view, offset, prepared.length);
+    offset = writeUint16(view, offset, prepared.length);
+    offset = writeUint32(view, offset, centralLength);
+    offset = writeUint32(view, offset, centralOffset);
+    writeUint16(view, offset, 0);
+
+    return buffer;
+  }
+
+  function build3MFBuffer(mesh) {
+    const vertexXml = mesh.vertices
+      .map((vertex) => `<vertex x="${vertex[0]}" y="${vertex[1]}" z="${vertex[2]}"/>`)
+      .join('');
+    const triangleXml = mesh.faces
+      .map((face) => `<triangle v1="${face[0]}" v2="${face[1]}" v3="${face[2]}"/>`)
+      .join('');
+    const modelXml = `<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices>${vertexXml}</vertices><triangles>${triangleXml}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+    const relsXml = `<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
+    const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`;
+
+    return createZip([
+      { name: '[Content_Types].xml', data: contentTypesXml },
+      { name: '_rels/.rels', data: relsXml },
+      { name: '3D/3dmodel.model', data: modelXml }
+    ]);
+  }
+
+  function sanitizeFilename(raw) {
+    const cleaned = (raw || '')
+      .trim()
+      .replace(/\.(stl|obj|3mf)$/i, '')
+      .replace(/[<>:"/\\|?*\x00-\x1F]+/g, '_')
+      .replace(/\s+/g, '_')
+      .slice(0, 80);
+    return cleaned || 'cap';
+  }
+
+  function updateDerived() {
+    const { W, L, H, T } = getParams();
+    const innerW = Number.isFinite(W) && Number.isFinite(T) ? W + T : 0;
+    const innerL = Number.isFinite(L) && Number.isFinite(T) ? L + T : 0;
+    const outerW = innerW + 2 * MODEL.wall;
+    const outerL = innerL + 2 * MODEL.wall;
+    const outerH = (Number.isFinite(H) ? H : 0) + MODEL.bottom;
+    const zCenter = MODEL.bottom + MODEL.sphereRadius;
+    const railLength = Math.max(0, (Number.isFinite(L) ? L : 0) - 2 * MODEL.sphereRadius);
+
+    refs.derived.iw.textContent = `${innerW.toFixed(2)} mm`;
+    refs.derived.il.textContent = `${innerL.toFixed(2)} mm`;
+    refs.derived.ow.textContent = `${outerW.toFixed(2)} mm`;
+    refs.derived.ol.textContent = `${outerL.toFixed(2)} mm`;
+    refs.derived.oh.textContent = `${outerH.toFixed(2)} mm`;
+    refs.derived.zc.textContent = `${zCenter.toFixed(3)} mm`;
+    refs.derived.cl.textContent = `${railLength.toFixed(3)} mm`;
+  }
+
+  function renderReport(certification) {
+    if (!certification) {
+      refs.reportTitle.textContent = 'No validated model yet';
+      refs.reportSummary.textContent = 'Build a preview to generate a printability report.';
+      refs.reportList.replaceChildren();
+      refs.reportStats.replaceChildren();
+      return;
+    }
+
+    refs.reportTitle.textContent = certification.report.title;
+    refs.reportSummary.textContent = certification.report.summary;
+
+    const reportItems = certification.report.items.map((item) => {
+      const row = document.createElement('div');
+      row.className = 'report-item';
+
+      const mark = document.createElement('span');
+      mark.className = 'report-item-mark';
+      mark.textContent = certification.pass ? '[OK]' : '[!]';
+
+      const copy = document.createElement('span');
+      copy.textContent = item;
+
+      row.append(mark, copy);
+      return row;
+    });
+    refs.reportList.replaceChildren(...reportItems);
+
+    const triangleLabel = certification.report.metrics.sourceTriangleCount === certification.report.metrics.triangleCount
+      ? 'Triangle Count'
+      : 'Preview / Export Triangles';
+    const triangleValue = certification.report.metrics.sourceTriangleCount === certification.report.metrics.triangleCount
+      ? certification.report.metrics.triangleCount.toLocaleString()
+      : `${certification.report.metrics.sourceTriangleCount.toLocaleString()} / ${certification.report.metrics.triangleCount.toLocaleString()}`;
+
+    const stats = [
+      [triangleLabel, triangleValue],
+      ['Surface Area', `${formatNumber(certification.report.metrics.surfaceArea, 2)} mm^2`],
+      ['Volume Estimate', `${formatNumber(certification.report.metrics.volume, 2)} mm^3`],
+      ['Export Sizes', `STL ${formatBytes(certification.report.metrics.stlBytes)} | OBJ ${formatBytes(certification.report.metrics.objBytes)} | 3MF ${formatBytes(certification.report.metrics.m3mfBytes)}`]
+    ].map(([label, value]) => {
+      const card = document.createElement('div');
+      card.className = 'report-stat';
+
+      const statLabel = document.createElement('div');
+      statLabel.className = 'report-stat-label';
+      statLabel.textContent = label;
+
+      const statValue = document.createElement('div');
+      statValue.className = 'report-stat-value';
+      statValue.textContent = value;
+
+      card.append(statLabel, statValue);
+      return card;
+    });
+    refs.reportStats.replaceChildren(...stats);
+  }
+
+  function syncActionAvailability() {
+    refs.reportBtn.disabled = !currentCertification;
+    exportButtons.forEach((button) => {
+      button.disabled = false;
+      button.classList.toggle('certified', Boolean(currentCertification && currentCertification.pass));
+    });
+  }
+
+  function setValidationPending(message) {
+    if (refs.reportDialog.open) refs.reportDialog.close();
+    refs.validationState.className = 'validation-state pending';
+    refs.validationState.textContent = 'Validation Pending';
+    refs.validationScore.textContent = '--';
+    refs.validationSummary.textContent = message;
+    refs.certBadge.className = 'cert-badge pending';
+    refs.certBadge.textContent = 'Certification Pending';
+    currentSourceModel = null;
+    currentExportModel = null;
+    currentModelPackageKey = '';
+    currentCertification = null;
+    renderReport(null);
+    syncActionAvailability();
+  }
+
+  function updateValidationUi(certification) {
+    if (!certification) {
+      setValidationPending('Load a preview to validate, repair, and certify the generated mesh before export.');
+      return;
+    }
+
+    refs.validationState.className = `validation-state ${certification.pass ? 'success' : 'error'}`;
+    refs.validationState.textContent = certification.pass ? 'Model Validated' : 'Repair Failed';
+    refs.validationScore.textContent = `${certification.score}%`;
+    refs.validationSummary.textContent = certification.report.summary;
+    refs.certBadge.className = `cert-badge ${certification.pass ? 'success' : 'error'}`;
+    refs.certBadge.textContent = certification.pass ? 'Certified Printable' : 'Export Blocked';
+    renderReport(certification);
+    syncActionAvailability();
+  }
+
+  async function buildCertifiedModel() {
+    const params = validateParams(getParams());
+    const key = modelKey(params);
+    if (currentCertification && currentSourceModel && currentExportModel && currentModelPackageKey === key) {
+      return {
+        params,
+        certification: currentCertification,
+        sourceModel: currentSourceModel,
+        exportModel: currentExportModel
+      };
+    }
+
+    const start = performance.now();
+    const sourceModel = buildModel(params.W, params.L, params.H, params.T);
+    if (!sourceModel.triangleCount) {
+      throw new Error('The current inputs produced no visible geometry.');
+    }
+
+    const certification = validateAndRepairModel(sourceModel);
+    certification.elapsed = (performance.now() - start) / 1000;
+    currentSourceModel = sourceModel;
+    currentExportModel = certification.finalModel;
+    currentModelPackageKey = key;
+    currentCertification = certification;
+    updateValidationUi(certification);
+    return { params, certification, sourceModel, exportModel: certification.finalModel };
+  }
+
+  function setStatus(type, message) {
+    refs.status.className = type;
+    refs.status.textContent = message;
+  }
+
+  function clearStatus() {
+    refs.status.className = '';
+    refs.status.textContent = '';
+  }
+
+  function setActionBusy(kind, on) {
+    [refs.pBtn, ...exportButtons, refs.reportBtn].forEach((button) => {
+      button.disabled = on;
+    });
+    if (!on) {
+      syncActionAvailability();
+      return;
+    }
+    [refs.pBtn, ...exportButtons].forEach((button) => {
+      const state = buttonArmState.get(button);
+      if (!state) return;
+      state.armed = false;
+      state.progress = 0;
+      state.hovering = false;
+      if (state.frame) cancelAnimationFrame(state.frame);
+      state.frame = 0;
+      button.style.setProperty('--charge', '0');
+      button.classList.remove('armed', 'waiting');
+    });
+  }
+
+  async function handlePreview() {
+    setActionBusy('preview', true);
+    setStatus('loading', 'Building preview mesh and validating printability.');
+    refs.tbmsg.textContent = 'Building Preview';
+    refs.tbdim.textContent = '';
+    refs.dot.classList.remove('on');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    try {
+      const { params, certification, sourceModel, exportModel } = await buildCertifiedModel();
+      showPreview(sourceModel);
+
+      const elapsed = certification.elapsed.toFixed(2);
+      if (certification.pass) {
+        setStatus('success', `Preview ready in ${elapsed}s · ${sourceModel.triangleCount.toLocaleString()} source triangles · ${exportModel.triangleCount.toLocaleString()} certified export triangles.`);
+      } else {
+        setStatus('error', certification.report.summary);
+      }
+      refs.tbmsg.textContent = certification.pass
+        ? `${sourceModel.triangleCount.toLocaleString()} Preview Triangles · Certified Export Ready`
+        : `${sourceModel.triangleCount.toLocaleString()} Preview Triangles · Export Blocked`;
+      refs.tbdim.textContent = `W${params.W} × L${params.L} × H${params.H} mm  T${params.T}`;
+      refs.dot.classList.toggle('on', certification.pass);
+    } catch (error) {
+      clearPreview();
+      currentSourceModel = null;
+      currentExportModel = null;
+      currentModelPackageKey = '';
+      currentCertification = null;
+      updateValidationUi(null);
+      setStatus('error', `Preview failed: ${error.message}`);
+      refs.tbmsg.textContent = 'Preview Failed';
+      refs.tbdim.textContent = '';
+      console.error(error);
+    }
+
+    setActionBusy('preview', false);
+  }
+
+  async function handleExport(format) {
+    setActionBusy('download', true);
+    setStatus('loading', `Validating mesh and preparing ${format.toUpperCase()} export.`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    try {
+      const { certification, exportModel } = await buildCertifiedModel();
+      if (!certification.pass) {
+        setStatus('error', certification.report.summary);
+        return;
+      }
+
+      const baseName = sanitizeFilename(refs.filename.value);
+      let blob;
+      let filename;
+
+      if (format === 'stl') {
+        const buffer = buildSTLBuffer(exportModel);
+        blob = new Blob([buffer], { type: 'application/sla' });
+        filename = `${baseName}.stl`;
+      } else if (format === 'obj') {
+        const text = buildOBJText(certification.mesh);
+        blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        filename = `${baseName}.obj`;
+      } else if (format === '3mf') {
+        const buffer = build3MFBuffer(certification.mesh);
+        blob = new Blob([buffer], { type: 'model/3mf' });
+        filename = `${baseName}.3mf`;
+      } else {
+        throw new Error(`Unsupported export format: ${format}`);
+      }
+
+      downloadBlob(blob, filename);
+      setStatus('success', `Saved ${filename} · ${formatBytes(blob.size)} · Certified Printable.`);
+    } catch (error) {
+      setStatus('error', `Export failed: ${error.message}`);
+      console.error(error);
+    }
+
+    setActionBusy('download', false);
+  }
+
+  function getCanvasRect() {
+    return refs.canvas.getBoundingClientRect();
+  }
+
+  function zoomToCursor(deltaY, clientX, clientY, immediate = true) {
+    const rect = getCanvasRect();
+    mouseNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouseNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouseNdc, camera);
+    camera.getWorldDirection(tmpVecA);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(tmpVecA, nav.target);
+    const focusPoint = raycaster.ray.intersectPlane(plane, tmpVecB.clone()) || nav.target.clone();
+
+    const factor = Math.exp(deltaY * 0.00125);
+    const nextRadius = THREE.MathUtils.clamp(nav.desiredSpherical.radius * factor, MODEL.minRadius, MODEL.maxRadius);
+    const appliedFactor = nextRadius / nav.desiredSpherical.radius;
+    tmpVecC.copy(nav.desiredTarget).sub(focusPoint).multiplyScalar(appliedFactor);
+    nav.desiredTarget.copy(focusPoint).add(tmpVecC);
+    nav.desiredSpherical.radius = nextRadius;
+
+    if (immediate) syncCurrentToDesired();
+    else nav.transitioning = true;
+  }
+
+  function orbitByPixels(dx, dy) {
+    const rect = getCanvasRect();
+    const azimuth = (dx / Math.max(rect.width, 1)) * Math.PI * 1.8;
+    const polar = (dy / Math.max(rect.height, 1)) * Math.PI * 1.1;
+    nav.desiredSpherical.theta -= azimuth;
+    nav.desiredSpherical.phi = clampPhi(nav.desiredSpherical.phi + polar);
+    syncCurrentToDesired();
+  }
+
+  function panByPixels(dx, dy) {
+    const rect = getCanvasRect();
+    const distance = nav.spherical.radius;
+    const worldHeight = 2 * distance * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+    const worldWidth = worldHeight * camera.aspect;
+
+    camera.getWorldDirection(tmpVecA);
+    tmpVecB.crossVectors(tmpVecA, camera.up).normalize();
+    tmpVecC.crossVectors(tmpVecB, tmpVecA).normalize();
+
+    const moveX = (-dx / Math.max(rect.width, 1)) * worldWidth;
+    const moveY = (dy / Math.max(rect.height, 1)) * worldHeight;
+
+    nav.desiredTarget.addScaledVector(tmpVecB, moveX);
+    nav.desiredTarget.addScaledVector(tmpVecC, moveY);
+    syncCurrentToDesired();
+  }
+
+  function resolveInteractionMode(event) {
+    if (event.button === 1 && event.shiftKey) return 'orbit';
+    if (event.button === 1) return 'pan';
+    if (event.button === 2) return 'orbit';
+    if (event.button === 0) return 'orbit';
+    return null;
+  }
+
+  function handlePointerDown(event) {
+    const mode = resolveInteractionMode(event);
+    if (!mode) return;
+
+    nav.interaction = {
+      mode,
+      x: event.clientX,
+      y: event.clientY
+    };
+    setCanvasCursor(mode);
+    refs.canvas.focus?.();
+    event.preventDefault();
+  }
+
+  function handlePointerMove(event) {
+    if (!nav.interaction) return;
+    const dx = event.clientX - nav.interaction.x;
+    const dy = event.clientY - nav.interaction.y;
+    nav.interaction.x = event.clientX;
+    nav.interaction.y = event.clientY;
+
+    if (nav.interaction.mode === 'orbit') orbitByPixels(dx, dy);
+    else if (nav.interaction.mode === 'pan') panByPixels(dx, dy);
+  }
+
+  function handlePointerUp() {
+    nav.interaction = null;
+    setCanvasCursor(null);
+  }
+
+  function updateCamera(dt) {
+    if (nav.transitioning) {
+      const alpha = 1 - Math.exp(-DAMPING.transition * dt);
+      nav.target.lerp(nav.desiredTarget, alpha);
+      nav.spherical.radius = THREE.MathUtils.lerp(nav.spherical.radius, nav.desiredSpherical.radius, alpha);
+      nav.spherical.phi = THREE.MathUtils.lerp(nav.spherical.phi, nav.desiredSpherical.phi, alpha);
+      nav.spherical.theta += angleDelta(nav.spherical.theta, nav.desiredSpherical.theta) * alpha;
+
+      const done =
+        nav.target.distanceToSquared(nav.desiredTarget) < DAMPING.viewThreshold &&
+        Math.abs(nav.spherical.radius - nav.desiredSpherical.radius) < DAMPING.viewThreshold &&
+        Math.abs(nav.spherical.phi - nav.desiredSpherical.phi) < DAMPING.viewThreshold &&
+        Math.abs(angleDelta(nav.spherical.theta, nav.desiredSpherical.theta)) < DAMPING.viewThreshold;
+
+      if (done) syncCurrentToDesired();
+    }
+
+    nav.roll += (nav.rollTarget - nav.roll) * (1 - Math.exp(-DAMPING.transition * dt));
+    tmpVecA.setFromSpherical(nav.spherical);
+    camera.position.copy(nav.target).add(tmpVecA);
+    camera.lookAt(nav.target);
+    if (Math.abs(nav.roll) > 1e-4) camera.rotateZ(nav.roll);
+  }
+
+  // Snap the main camera to look from an arbitrary world direction (face/edge/corner).
+  function snapToDirection(dir, kind) {
+    if (!nav.bounds) return;
+    const center = nav.bounds.getCenter(new THREE.Vector3());
+    const distance = fitDistanceForBounds(nav.bounds, kind === 'corner' ? 1.28 : 1.14);
+    const spherical = new THREE.Spherical().setFromVector3(dir.clone().multiplyScalar(distance));
+    nav.desiredTarget.copy(center);
+    nav.desiredSpherical.radius = THREE.MathUtils.clamp(distance, MODEL.minRadius, MODEL.maxRadius);
+    nav.desiredSpherical.phi = clampPhi(spherical.phi);
+    nav.desiredSpherical.theta = spherical.theta;
+    nav.rollTarget = 0;
+    nav.transitioning = true;
+  }
+
+  // Live free-orbit driven by dragging the ViewCube (virtual trackball).
+  function cubeOrbit(dx, dy) {
+    nav.desiredSpherical.theta -= (dx / 200) * Math.PI;
+    nav.desiredSpherical.phi = clampPhi(nav.desiredSpherical.phi + (dy / 200) * Math.PI);
+    syncCurrentToDesired();
+  }
+
+  const viewCube = window.createCADViewCube({
+    mount: refs.viewCubeMount,
+    getQuaternion: () => camera.quaternion,
+    getViewDir: () => camera.position.clone().sub(nav.target).normalize(),
+    snap: (dir, kind) => snapToDirection(dir, kind),
+    orbit: (dx, dy) => cubeOrbit(dx, dy),
+    home: () => animateToView('home'),
+    fit: () => fitCurrentModel(true),
+    roll: (d) => { nav.rollTarget += d * Math.PI / 2; }
+  });
+
+  function updateViewCube() { viewCube.update(); }
+
+  function renderLoop(now) {
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    updateCamera(dt);
+    updateViewCube();
+    renderer.render(scene, camera);
+    requestAnimationFrame(renderLoop);
+  }
+
+  function handleViewButton(view) {
+    if (view === 'fit') fitCurrentModel(true);
+    else animateToView(view);
+  }
+
+  function setButtonCharge(button, progress, armed) {
+    button.style.setProperty('--charge', progress.toFixed(3));
+    button.classList.toggle('armed', armed);
+    button.classList.toggle('waiting', progress > 0 && progress < 1 && !armed);
+  }
+
+  function setupArmButton(button, action) {
+  const state = {
+    armed: false,
+    progress: 0,
+    start: 0,
+    frame: 0,
+    hovering: false,
+    duration: 16
+  };
+  buttonArmState.set(button, state);
+
+  const stop = (reset) => {
+    if (state.frame) cancelAnimationFrame(state.frame);
+    state.frame = 0;
+    if (reset) {
+      state.progress = 0;
+      state.armed = false;
+      state.start = 0;
+    }
+    setButtonCharge(button, state.progress, state.armed);
+  };
+
+  const tick = (now) => {
+    if (!state.hovering || button.disabled) {
+      stop(true);
+      return;
+    }
+    state.progress = Math.min(1, (now - state.start) / state.duration);
+    if (state.progress >= 1) {
+      state.armed = true;
+      setButtonCharge(button, 1, true);
+      state.frame = 0;
+      return;
+    }
+    setButtonCharge(button, state.progress, false);
+    state.frame = requestAnimationFrame(tick);
+  };
+
+  const begin = () => {
+    if (button.disabled || state.armed) return;
+    state.hovering = true;
+    state.start = performance.now();
+    state.progress = 0;
+    setButtonCharge(button, 0, false);
+    if (!state.frame) state.frame = requestAnimationFrame(tick);
+  };
+
+  const reset = () => {
+    state.hovering = false;
+    stop(true);
+  };
+
+  button.addEventListener('mouseenter', begin);
+  button.addEventListener('focus', begin);
+  button.addEventListener('mouseleave', reset);
+  button.addEventListener('blur', reset);
+  button.addEventListener('click', async (event) => {
+    if (button.disabled) return;
+    if (!state.armed) {
+      event.preventDefault();
+      setStatus('error', 'Hover over the button until the progress bar completes, then click.');
+      return;
+    }
+    state.hovering = false;
+    stop(true);
+    await action();
+  });
+}
+
+  function handleKeydown(event) {
+    if (/input|textarea/i.test(document.activeElement?.tagName || '')) return;
+    if (event.key.toLowerCase() === 'f') {
+      fitCurrentModel(true);
+      event.preventDefault();
+    }
+  }
+
+  refs.canvas.addEventListener('mousedown', handlePointerDown);
+  refs.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  window.addEventListener('mousemove', handlePointerMove);
+  window.addEventListener('mouseup', handlePointerUp);
+
+  refs.canvas.addEventListener('wheel', (event) => {
+    zoomToCursor(event.deltaY, event.clientX, event.clientY, true);
+    event.preventDefault();
+  }, { passive: false });
+
+  setupArmButton(refs.pBtn, handlePreview);
+  setupArmButton(refs.dBtn, () => handleExport('stl'));
+  setupArmButton(refs.objBtn, () => handleExport('obj'));
+  setupArmButton(refs.m3mfBtn, () => handleExport('3mf'));
+  let boxPreviewTimer = null;
+  Object.values(refs.inputs).forEach((input) => {
+    input.addEventListener('input', () => {
+      updateDerived();
+      setValidationPending('Parameters changed. Rebuilding preview…');
+      clearTimeout(boxPreviewTimer);
+      boxPreviewTimer = setTimeout(() => { handlePreview(); }, 280);
+    });
+  });
+
+  refs.reportBtn.addEventListener('click', () => {
+    if (!currentCertification) return;
+    refs.reportDialog.showModal();
+  });
+  refs.reportClose.addEventListener('click', () => refs.reportDialog.close());
+
+  window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('resize', resize);
+
+  resize();
+  updateDerived();
+  clearStatus();
+  updateValidationUi(null);
+  setCanvasCursor(null);
+  refs.tbmsg.textContent = 'Waiting for Preview';
+
+  // Auto-build the default preview the first time the Box tab is shown.
+  let boxAutoPreviewed = false;
+  window.__capgenShow = window.__capgenShow || {};
+  window.__capgenShow.box = function () {
+    resize();
+    if (!boxAutoPreviewed) { boxAutoPreviewed = true; handlePreview(); }
+  };
+
+  requestAnimationFrame(renderLoop);
+})();
+
+</script>
+
+<!-- ══════ CYLINDER CAP — Pure-JS geometry (exact OpenSCAD translation) ══════ -->
+<script>
+(() => {
+'use strict';
+if (!window.THREE) return;
+
+/*
+  EXACT JavaScript translation of the OpenSCAD cylinder cap:
+
+  actual_inner_diameter = diameter + tolerance
+  actual_inner_height   = height + tolerance
+  inner_d = actual_inner_diameter
+  outer_d = inner_d + 2 * wall_thickness
+  outer_r = outer_d / 2
+  total_height = top_thickness + actual_inner_height   (top_thickness = 2)
+  grip_r = wall_thickness / 2
+  grip_z = total_height - top_thickness - grip_r
+
+  Geometry = union of:
+    A) difference(outer_cylinder, inner_cavity)
+    B) grip torus at z=grip_z with major_r=outer_r, minor_r=grip_r
+
+  All built analytically in JS — no WASM, generates in <50ms.
+*/
+
+const TOP = 2.0;       // top_thickness (fixed)
+const FN  = 100;       // $fn radial segments
+const FN_T = 40;       // torus tube segments
+
+// ── DOM refs ──
+const R = {
+  canvas:  document.getElementById('cyl-cv'),
+  rpane:   document.getElementById('cyl-rpane'),
+  status:  document.getElementById('cyl-status'),
+  dot:     document.getElementById('cyl-dot'),
+  tbmsg:   document.getElementById('cyl-tbmsg'),
+  tbdim:   document.getElementById('cyl-tbdim'),
+  pBtn:    document.getElementById('cyl-pBtn'),
+  dBtn:    document.getElementById('cyl-dBtn'),
+  objBtn:  document.getElementById('cyl-objBtn'),
+  m3mfBtn: document.getElementById('cyl-m3mfBtn'),
+  pLbl:    document.getElementById('cyl-pLbl'),
+  reportBtn:    document.getElementById('cyl-reportBtn'),
+  reportDialog: document.getElementById('cyl-reportDialog'),
+  reportClose:  document.getElementById('cyl-reportClose'),
+  reportTitle:  document.getElementById('cyl-reportTitle'),
+  reportSummary:document.getElementById('cyl-reportSummary'),
+  reportList:   document.getElementById('cyl-reportList'),
+  reportStats:  document.getElementById('cyl-reportStats'),
+  valState:  document.getElementById('cyl-validationState'),
+  valScore:  document.getElementById('cyl-validationScore'),
+  valSummary:document.getElementById('cyl-validationSummary'),
+  certBadge: document.getElementById('cyl-certBadge'),
+  filename:  document.getElementById('cyl-iFilename'),
+  inputs: {
+    D: document.getElementById('cyl-iD'),
+    H: document.getElementById('cyl-iH'),
+    W: document.getElementById('cyl-iW'),
+    T: document.getElementById('cyl-iT'),
+  },
+  derived: {
+    id: document.getElementById('cyl-d_id'),
+    od: document.getElementById('cyl-d_od'),
+    th: document.getElementById('cyl-d_th'),
+    gz: document.getElementById('cyl-d_gz'),
+    gr: document.getElementById('cyl-d_gr'),
+  },
+  viewCubeMount: document.getElementById('cyl-viewCubeMount'),
+};
+const exportButtons = [R.dBtn, R.objBtn, R.m3mfBtn];
+
+// ── Three.js setup ──
+const THREE = window.THREE;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x121110);
+const modelRoot = new THREE.Group();
+scene.add(modelRoot);
+scene.add(new THREE.GridHelper(420, 34, 0x3a352d, 0x211f1b));
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 10000);
+const renderer = new THREE.WebGLRenderer({ canvas: R.canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+scene.add(new THREE.AmbientLight(0x2b2824, 0.95));
+const kl = new THREE.DirectionalLight(0xfff3e2, 1.18); kl.position.set(2.6,4.2,3.1); scene.add(kl);
+const fl = new THREE.DirectionalLight(0xffffff, 0.6);  fl.position.set(-3.2,1.6,-2.2); scene.add(fl);
+const rl = new THREE.DirectionalLight(0xe8e4d8, 0.32); rl.position.set(0.6,5.5,-3.4); scene.add(rl);
+
+// ── Camera / nav (mirrors original app.js) ──
+const nav = {
+  target: new THREE.Vector3(0, 10, 0),
+  spherical: new THREE.Spherical(120, 1.07, 0.82),
+  desired: { target: new THREE.Vector3(0,10,0), spherical: new THREE.Spherical(120,1.07,0.82) },
+  interaction: null, bounds: null, transitioning: false,
+  roll: 0, rollTarget: 0,
+};
+const DAMPING = 11;
+const HOME = 'corner-tfr';
+const VIEWS = {
+  top: new THREE.Vector3(0,1,0), bottom: new THREE.Vector3(0,-1,0),
+  front: new THREE.Vector3(0,0,1), back: new THREE.Vector3(0,0,-1),
+  left: new THREE.Vector3(-1,0,0), right: new THREE.Vector3(1,0,0),
+  'corner-tfr': new THREE.Vector3(1,1,1).normalize(),
+  'corner-tfl': new THREE.Vector3(-1,1,1).normalize(),
+  'corner-tbr': new THREE.Vector3(1,1,-1).normalize(),
+  'corner-tbl': new THREE.Vector3(-1,1,-1).normalize(),
+  'corner-bfr': new THREE.Vector3(1,-1,1).normalize(),
+  'corner-bfl': new THREE.Vector3(-1,-1,1).normalize(),
+  'corner-bbr': new THREE.Vector3(1,-1,-1).normalize(),
+  'corner-bbl': new THREE.Vector3(-1,-1,-1).normalize(),
+};
+
+let currentMesh = null;
+let currentCert = null;
+let currentModel = null;   // { positions[], normals[], triangleCount }
+let lastFrame = performance.now();
+const buttonArmState = new WeakMap();
+const tA=new THREE.Vector3(), tB=new THREE.Vector3(), tC=new THREE.Vector3();
+const tEuler = new THREE.Euler();
+
+function clampPhi(p){ return THREE.MathUtils.clamp(p,0.08,Math.PI-0.08); }
+function normAngle(a){ const t=Math.PI*2; let r=a%t; if(r>Math.PI)r-=t; if(r<-Math.PI)r+=t; return r; }
+function syncNav(){ nav.target.copy(nav.desired.target); nav.spherical.radius=nav.desired.spherical.radius; nav.spherical.phi=nav.desired.spherical.phi; nav.spherical.theta=nav.desired.spherical.theta; nav.transitioning=false; }
+
+function resize(){
+  const w=R.rpane.clientWidth, h=Math.max(220,R.rpane.clientHeight-42);
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+
+function fitDist(bounds){
+  const s=bounds.getBoundingSphere(new THREE.Sphere());
+  const hfy=THREE.MathUtils.degToRad(camera.fov*0.5),hfx=Math.atan(Math.tan(hfy)*camera.aspect);
+  return Math.max(s.radius/Math.sin(Math.max(hfy,0.01)),s.radius/Math.sin(Math.max(hfx,0.01)))*1.2;
+}
+function fitView(animate=true){
+  if(!nav.bounds)return;
+  const c=nav.bounds.getCenter(new THREE.Vector3()),d=fitDist(nav.bounds);
+  nav.desired.target.copy(c); nav.desired.spherical.radius=THREE.MathUtils.clamp(d,8,4000);
+  if(animate)nav.transitioning=true; else syncNav();
+}
+function animateTo(v){
+  if(!nav.bounds)return;
+  const key=v==='home'?HOME:v, dir=VIEWS[key]; if(!dir)return;
+  const c=nav.bounds.getCenter(new THREE.Vector3()), d=fitDist(nav.bounds)*(key.startsWith('corner')?1.28:1.14);
+  const sph=new THREE.Spherical().setFromVector3(dir.clone().multiplyScalar(d));
+  nav.desired.target.copy(c);
+  nav.desired.spherical.radius=THREE.MathUtils.clamp(d,8,4000);
+  nav.desired.spherical.phi=clampPhi(sph.phi);
+  nav.desired.spherical.theta=sph.theta;
+  nav.transitioning=true;
+}
+
+const getRC=()=>R.canvas.getBoundingClientRect();
+function orbitPx(dx,dy){ const rc=getRC(); nav.desired.spherical.theta-=(dx/Math.max(rc.width,1))*Math.PI*1.8; nav.desired.spherical.phi=clampPhi(nav.desired.spherical.phi+(dy/Math.max(rc.height,1))*Math.PI*1.1); syncNav(); }
+function panPx(dx,dy){ const rc=getRC(),d=nav.spherical.radius,wh=2*d*Math.tan(THREE.MathUtils.degToRad(camera.fov*0.5)),ww=wh*camera.aspect; camera.getWorldDirection(tA); tB.crossVectors(tA,camera.up).normalize(); tC.crossVectors(tB,tA).normalize(); nav.desired.target.addScaledVector(tB,(-dx/Math.max(rc.width,1))*ww); nav.desired.target.addScaledVector(tC,(dy/Math.max(rc.height,1))*wh); syncNav(); }
+function zoomPx(dy){ nav.desired.spherical.radius=THREE.MathUtils.clamp(nav.desired.spherical.radius*Math.exp(dy*0.00125),8,4000); syncNav(); }
+
+R.canvas.addEventListener('mousedown',e=>{ const m=e.button===1&&e.shiftKey?'orbit':e.button===1?'pan':e.button===2?'orbit':'orbit'; nav.interaction={mode:m,x:e.clientX,y:e.clientY}; R.canvas.style.cursor=m==='pan'?'move':'grabbing'; e.preventDefault(); });
+window.addEventListener('mousemove',e=>{ if(!nav.interaction)return; const dx=e.clientX-nav.interaction.x,dy=e.clientY-nav.interaction.y; nav.interaction.x=e.clientX; nav.interaction.y=e.clientY; nav.interaction.mode==='orbit'?orbitPx(dx,dy):panPx(dx,dy); });
+window.addEventListener('mouseup',()=>{ nav.interaction=null; R.canvas.style.cursor='grab'; });
+R.canvas.addEventListener('wheel',e=>{ zoomPx(e.deltaY); e.preventDefault(); },{passive:false});
+R.canvas.addEventListener('contextmenu',e=>e.preventDefault());
+window.addEventListener('keydown',e=>{ if(/input|textarea/i.test(document.activeElement?.tagName||''))return; if(e.key.toLowerCase()==='f'){fitView(true);e.preventDefault();} });
+// Snap the main camera to look from a world direction (face/edge/corner).
+function snapToDirection(dir, kind){
+  if(!nav.bounds)return;
+  const c=nav.bounds.getCenter(new THREE.Vector3()), d=fitDist(nav.bounds)*(kind==='corner'?1.28:1.14);
+  const sph=new THREE.Spherical().setFromVector3(dir.clone().multiplyScalar(d));
+  nav.desired.target.copy(c);
+  nav.desired.spherical.radius=THREE.MathUtils.clamp(d,8,4000);
+  nav.desired.spherical.phi=clampPhi(sph.phi);
+  nav.desired.spherical.theta=sph.theta;
+  nav.rollTarget=0;
+  nav.transitioning=true;
+}
+// Live free-orbit driven by dragging the ViewCube.
+function cubeOrbit(dx,dy){
+  nav.desired.spherical.theta-=(dx/200)*Math.PI;
+  nav.desired.spherical.phi=clampPhi(nav.desired.spherical.phi+(dy/200)*Math.PI);
+  syncNav();
+}
+
+const viewCube = window.createCADViewCube({
+  mount: R.viewCubeMount,
+  getQuaternion: () => camera.quaternion,
+  getViewDir: () => camera.position.clone().sub(nav.target).normalize(),
+  snap: (dir, kind) => snapToDirection(dir, kind),
+  orbit: (dx, dy) => cubeOrbit(dx, dy),
+  home: () => animateTo('home'),
+  fit: () => fitView(true),
+  roll: (d) => { nav.rollTarget += d * Math.PI / 2; }
+});
+
+function updateViewCube(){ viewCube.update(); }
+
+function updateCamera(dt){
+  if(nav.transitioning){
+    const a=1-Math.exp(-DAMPING*dt);
+    nav.target.lerp(nav.desired.target,a);
+    nav.spherical.radius+=(nav.desired.spherical.radius-nav.spherical.radius)*a;
+    nav.spherical.phi+=(nav.desired.spherical.phi-nav.spherical.phi)*a;
+    nav.spherical.theta+=normAngle(nav.desired.spherical.theta-nav.spherical.theta)*a;
+    if(nav.target.distanceToSquared(nav.desired.target)<1e-6&&Math.abs(nav.spherical.radius-nav.desired.spherical.radius)<1e-6)syncNav();
+  }
+  nav.roll+=(nav.rollTarget-nav.roll)*(1-Math.exp(-DAMPING*dt));
+  tA.setFromSpherical(nav.spherical);
+  camera.position.copy(nav.target).add(tA);
+  camera.lookAt(nav.target);
+  if(Math.abs(nav.roll)>1e-4)camera.rotateZ(nav.roll);
+}
+
+function renderLoop(now){
+  const dt=Math.min(0.05,(now-lastFrame)/1000); lastFrame=now;
+  // Only render when the cylinder tab is actually visible — this frees the GPU
+  // entirely for the box tab when it's active, keeping the box smooth and fast.
+  const visible = document.getElementById('panel-cyl').classList.contains('active');
+  if(visible){
+    updateCamera(dt); updateViewCube();
+    renderer.render(scene,camera);
+  }
+  requestAnimationFrame(renderLoop);
+}
+
+// ════════════════════════════════════════════════════════════
+//  GEOMETRY BUILDER — exact match of the OpenSCAD code
+//  Uses same builder pattern as original app.js
+// ════════════════════════════════════════════════════════════
+
+function createBuilder_unused(){
+  const positions=[], normals=[];
+  function vsub(a,b){return[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+  function vcrs(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+  function vnrm(v){const l=Math.hypot(v[0],v[1],v[2]);return l<1e-12?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}
+
+  function pushTri(a,b,c,na,nb,nc){
+    const ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2];
+    const vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+    const cx=uy*vz-uz*vy,cy=uz*vx-ux*vz,cz=ux*vy-uy*vx;
+    if(Math.hypot(cx,cy,cz)<1e-12)return;
+    positions.push(...a,...b,...c);
+    normals.push(...na,...nb,...nc);
+  }
+  function pushQuad(a,b,c,d,na,nb,nc,nd){
+    pushTri(a,b,c,na,nb,nc);
+    pushTri(a,c,d,na,nc,nd);
+  }
+  return{positions,normals,pushTri,pushQuad};
+}
+
+// Pre-compute trig tables at FN and FN_T
+function makeTrigTable_unused(n){
+  const c=[],s=[];
+  for(let i=0;i<=n;i++){const a=(i/n)*Math.PI*2;c.push(Math.cos(a));s.push(Math.sin(a));}
+  return{c,s};
+}
+
+function buildCylModel(D, H, W, T) {
+  const TOP = 2.0;
+  const FN   = 100;
+  const FN_T = 40;
+
+  // ── Exact OpenSCAD variable mapping ──
+  const actual_inner_diameter = D + T;
+  const actual_inner_height   = H + T;
+  const inner_d  = actual_inner_diameter;
+  const outer_d  = inner_d + 2 * W;
+  const outer_r  = outer_d / 2;
+  const inner_r  = inner_d / 2;
+  const total_h  = TOP + actual_inner_height;
+  const grip_r   = W / 2;
+  const grip_z   = total_h - TOP - grip_r;
+
+  // ── What the OpenSCAD boolean produces ──
+  // difference() subtracts inner cylinder translated DOWN by TOP (z=-TOP..actual_inner_height)
+  // from outer cylinder (z=0..total_h).  Result surfaces:
+  //   1. Bottom annulus  z=0, ring inner_r..outer_r, normal -Z  (open mouth of cap)
+  //   2. Outer wall      z=0..total_h, normal outward
+  //   3. Top disk        z=total_h, full circle outer_r, normal +Z  (closed end)
+  //   4. Inner wall      z=0..actual_inner_height, normal inward
+  //   5. Inner ceiling   z=actual_inner_height, circle inner_r, normal -Z (inside top)
+  //   6. Grip torus      at z=grip_z on outer surface
+
+  // Trig tables — Z-up model (X=r*cos, Y=r*sin, Z=height), same as original app.js
+  const cosA = [], sinA = [];
+  for (let i = 0; i <= FN; i++) {
+    const a = (i / FN) * Math.PI * 2;
+    cosA.push(Math.cos(a)); sinA.push(Math.sin(a));
+  }
+  const cosT = [], sinT = [];
+  for (let j = 0; j <= FN_T; j++) {
+    const a = (j / FN_T) * Math.PI * 2;
+    cosT.push(Math.cos(a)); sinT.push(Math.sin(a));
+  }
+
+  const positions = [], normals = [];
+
+  function tri(ax,ay,az, bx,by,bz, cx,cy,cz, nx,ny,nz) {
+    const ux=bx-ax,uy=by-ay,uz=bz-az, vx=cx-ax,vy=cy-ay,vz=cz-az;
+    if (Math.hypot(uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx) < 1e-12) return;
+    positions.push(ax,ay,az, bx,by,bz, cx,cy,cz);
+    normals.push(nx,ny,nz, nx,ny,nz, nx,ny,nz);
+  }
+
+  // 1. Bottom annulus (z=0, ring inner_r..outer_r, normal -Z)
+  for (let i = 0; i < FN; i++) {
+    const xi0=inner_r*cosA[i],  yi0=inner_r*sinA[i];
+    const xi1=inner_r*cosA[i+1],yi1=inner_r*sinA[i+1];
+    const xo0=outer_r*cosA[i],  yo0=outer_r*sinA[i];
+    const xo1=outer_r*cosA[i+1],yo1=outer_r*sinA[i+1];
+    // CW from above = CCW from below for -Z normal
+    tri(xo0,yo0,0, xo1,yo1,0, xi0,yi0,0,  0,0,-1);
+    tri(xi0,yi0,0, xo1,yo1,0, xi1,yi1,0,  0,0,-1);
+  }
+
+  // 2. Outer wall (z=0..total_h, outward radial normal)
+  for (let i = 0; i < FN; i++) {
+    const x0=outer_r*cosA[i],  y0=outer_r*sinA[i];
+    const x1=outer_r*cosA[i+1],y1=outer_r*sinA[i+1];
+    // CCW from outside
+    tri(x0,y0,0,       x1,y1,total_h,  x1,y1,0,       cosA[i+1],sinA[i+1],0);
+    tri(x0,y0,0,       x0,y0,total_h,  x1,y1,total_h, cosA[i],  sinA[i],  0);
+  }
+
+  // 3. Top disk (z=total_h, full circle 0..outer_r, normal +Z)
+  for (let i = 0; i < FN; i++) {
+    tri(0,0,total_h,
+        outer_r*cosA[i],  outer_r*sinA[i],  total_h,
+        outer_r*cosA[i+1],outer_r*sinA[i+1],total_h,
+        0,0,1);
+  }
+
+  // 4. Inner wall (z=0..actual_inner_height, inward radial normal)
+  for (let i = 0; i < FN; i++) {
+    const x0=inner_r*cosA[i],  y0=inner_r*sinA[i];
+    const x1=inner_r*cosA[i+1],y1=inner_r*sinA[i+1];
+    const iH = actual_inner_height;
+    // CCW from inside (normal points inward = -radial)
+    tri(x0,y0,0,  x1,y1,0,  x1,y1,iH,   -cosA[i+1],-sinA[i+1],0);
+    tri(x0,y0,0,  x1,y1,iH, x0,y0,iH,   -cosA[i],  -sinA[i],  0);
+  }
+
+  // 5. Inner ceiling (z=actual_inner_height, circle inner_r, normal -Z, facing into cavity)
+  for (let i = 0; i < FN; i++) {
+    const iH = actual_inner_height;
+    // CW from above = CCW from below for -Z normal
+    tri(0,0,iH,
+        inner_r*cosA[i+1],inner_r*sinA[i+1],iH,
+        inner_r*cosA[i],  inner_r*sinA[i],  iH,
+        0,0,-1);
+  }
+
+  // 6. Grip torus (major=outer_r, minor=grip_r, centre z=grip_z)
+  for (let i = 0; i < FN; i++) {
+    for (let j = 0; j < FN_T; j++) {
+      const corner = (ri, ti) => {
+        const cq=cosT[ti], sq=sinT[ti];
+        const Rmaj = outer_r + grip_r*cq;
+        const px=Rmaj*cosA[ri], py=Rmaj*sinA[ri], pz=grip_z+grip_r*sq;
+        const nl=Math.hypot(cq*cosA[ri], cq*sinA[ri], sq) || 1;
+        return { p:[px,py,pz], n:[cq*cosA[ri]/nl, cq*sinA[ri]/nl, sq/nl] };
+      };
+      const p00=corner(i,j), p10=corner(i+1,j), p11=corner(i+1,j+1), p01=corner(i,j+1);
+      positions.push(...p00.p,...p10.p,...p11.p); normals.push(...p00.n,...p10.n,...p11.n);
+      positions.push(...p00.p,...p11.p,...p01.p); normals.push(...p00.n,...p11.n,...p01.n);
+    }
+  }
+
+  return {
+    positions,
+    normals,
+    triangleCount: positions.length / 9,
+    meta: { inner_r, outer_r, inner_d, outer_d, total_h, actual_inner_height, grip_r, grip_z }
+  };
+}
+
+// ── modelToPreviewGeo — swap Y/Z (model is Z-up like original app.js, Three.js is Y-up) ──
+function modelToPreviewGeo(model){
+  const pos=[], nrm=[];
+  for(let i=0;i<model.positions.length;i+=3){
+    pos.push(model.positions[i], model.positions[i+2], model.positions[i+1]);
+    nrm.push(model.normals[i],   model.normals[i+2],   model.normals[i+1]);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal',  new THREE.Float32BufferAttribute(nrm,3));
+  geo.computeBoundingBox(); geo.computeBoundingSphere();
+  return geo;
+}
+
+function clearPreview(){
+  if(!currentMesh)return;
+  modelRoot.remove(currentMesh);
+  currentMesh.geometry.dispose(); currentMesh.material.dispose();
+  currentMesh=null; nav.bounds=null;
+}
+
+function showPreview(model){
+  const geo=modelToPreviewGeo(model);
+  clearPreview();
+  const mat=new THREE.MeshStandardMaterial({color:0xd8232a,roughness:0.42,metalness:0.05,emissive:0x420a0c,emissiveIntensity:0.4,side:THREE.DoubleSide});
+  currentMesh=new THREE.Mesh(geo,mat);
+  const bb=geo.boundingBox.clone();
+  const cx=(bb.min.x+bb.max.x)*0.5, cz=(bb.min.z+bb.max.z)*0.5;
+  currentMesh.position.set(-cx,-bb.min.y,-cz);
+  modelRoot.add(currentMesh);
+  nav.bounds=bb.translate(currentMesh.position.clone());
+  fitView(false);
+}
+
+// ── Validation (same pipeline as original app.js) ──
+const WTOL=1e-5, ATOL=1e-8, VTOL=1e-6;
+const FRAG_TRI=0.015, FRAG_VOL=0.0025, HOLE_LIMIT=4;
+
+function vsub(a,b){return[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function vcrs(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function vnrm(v){const l=Math.hypot(v[0],v[1],v[2]);return l<1e-12?[0,0,1]:[v[0]/l,v[1]/l,v[2]/l];}
+function dot3(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+function add3(a,b){return[a[0]+b[0],a[1]+b[1],a[2]+b[2]];}
+function scale3(v,s){return[v[0]*s,v[1]*s,v[2]*s];}
+function triArea(a,b,c){const cr=vcrs(vsub(b,a),vsub(c,a));return 0.5*Math.hypot(cr[0],cr[1],cr[2]);}
+function faceVol(a,b,c){return dot3(a,vcrs(b,c))/6;}
+function triNormal(a,b,c){return vnrm(vcrs(vsub(b,a),vsub(c,a)));}
+function vhash(v){return v.map(x=>Math.round(x/WTOL)).join('|');}
+
+function meshFromModel(model){
+  const verts=[],faces=[],vMap=new Map(); let collapsed=0;
+  function intern(v){const k=vhash(v);let i=vMap.get(k);if(i===undefined){i=verts.length;verts.push(v);vMap.set(k,i);}return i;}
+  for(let i=0;i<model.positions.length;i+=9){
+    const a=[model.positions[i],model.positions[i+1],model.positions[i+2]];
+    const b=[model.positions[i+3],model.positions[i+4],model.positions[i+5]];
+    const c=[model.positions[i+6],model.positions[i+7],model.positions[i+8]];
+    const f=[intern(a),intern(b),intern(c)];
+    if(f[0]===f[1]||f[1]===f[2]||f[0]===f[2]){collapsed++;continue;}
+    faces.push(f);
+  }
+  return{vertices:verts,faces,collapsedTriangles:collapsed};
+}
+
+function meshToModel(mesh){
+  const pos=[],nrm=[];
+  for(const f of mesh.faces){
+    const a=mesh.vertices[f[0]],b=mesh.vertices[f[1]],c=mesh.vertices[f[2]];
+    const n=triNormal(a,b,c);
+    pos.push(...a,...b,...c); nrm.push(...n,...n,...n);
+  }
+  return{positions:pos,normals:nrm,triangleCount:mesh.faces.length};
+}
+
+function buildEdgeMap(faces){
+  const map=new Map();
+  for(let fi=0;fi<faces.length;fi++){const f=faces[fi];for(let e=0;e<3;e++){const from=f[e],to=f[(e+1)%3],a=Math.min(from,to),b=Math.max(from,to),key=`${a}|${b}`;let en=map.get(key);if(!en){en={a,b,refs:[]};map.set(key,en);}en.refs.push({faceIndex:fi,from,to,dir:from===a?1:-1});}}
+  return map;
+}
+
+function buildAdjacency(faces){
+  const edgeMap=buildEdgeMap(faces),adj=Array.from({length:faces.length},()=>[]);
+  let bnd=0,nm=0,oriC=0;
+  for(const edge of edgeMap.values()){
+    if(edge.refs.length===1){bnd++;continue;}
+    if(edge.refs.length>2)nm++;
+    for(let i=0;i<edge.refs.length;i++)for(let j=i+1;j<edge.refs.length;j++){
+      const L=edge.refs[i],Rv=edge.refs[j],sd=L.dir===Rv.dir;
+      if(edge.refs.length===2&&sd)oriC++;
+      adj[L.faceIndex].push({faceIndex:Rv.faceIndex,sameDirection:sd});
+      adj[Rv.faceIndex].push({faceIndex:L.faceIndex,sameDirection:sd});
+    }
+  }
+  return{edgeMap,adjacency:adj,boundaryEdgeCount:bnd,nonManifoldEdgeCount:nm,orientationMismatchEdges:oriC};
+}
+
+function removeDegenerateFaces(mesh){const kept=[]; let rm=0; for(const f of mesh.faces){const a=mesh.vertices[f[0]],b=mesh.vertices[f[1]],c=mesh.vertices[f[2]];triArea(a,b,c)<=ATOL?rm++:kept.push(f);}mesh.faces=kept;return rm;}
+function removeDuplicateFaces(mesh){const seen=new Set(),kept=[]; let rm=0; for(const f of mesh.faces){const k=f.slice().sort((a,b)=>a-b).join('|');seen.has(k)?rm++:(seen.add(k),kept.push(f));}mesh.faces=kept;return rm;}
+
+function walkComponents(adj){
+  const flips=Array(adj.length).fill(null),comps=[]; let oriC=0;
+  for(let fi=0;fi<adj.length;fi++){
+    if(flips[fi]!==null)continue;
+    const stack=[fi],comp=[]; flips[fi]=false;
+    while(stack.length){const cur=stack.pop();comp.push(cur);for(const nb of adj[cur]){const ef=nb.sameDirection?!Boolean(flips[cur]):Boolean(flips[cur]);if(flips[nb.faceIndex]===null){flips[nb.faceIndex]=ef;stack.push(nb.faceIndex);}else if(flips[nb.faceIndex]!==ef)oriC++;}}
+    comps.push(comp);
+  }
+  return{flips,components:comps,orientationConflicts:oriC};
+}
+
+function flipFace(f){const t=f[1];f[1]=f[2];f[2]=t;}
+
+function repairOrientation(mesh){
+  const topo=buildAdjacency(mesh.faces),walk=walkComponents(topo.adjacency);
+  let ff=0,fc=0;
+  for(let i=0;i<walk.flips.length;i++)if(walk.flips[i]){flipFace(mesh.faces[i]);ff++;}
+  for(const comp of walk.components){
+    let vol=0;for(const fi of comp){const f=mesh.faces[fi];vol+=faceVol(mesh.vertices[f[0]],mesh.vertices[f[1]],mesh.vertices[f[2]]);}
+    if(vol<-VTOL){for(const fi of comp){flipFace(mesh.faces[fi]);ff++;}fc++;}
+  }
+  return{flippedFaces:ff,flippedComponents:fc,orientationConflicts:walk.orientationConflicts};
+}
+
+function removeSmallFragments(mesh){
+  const topo=buildAdjacency(mesh.faces),walk=walkComponents(topo.adjacency);
+  if(walk.components.length<=1)return{removedComponents:0,removedFaces:0};
+  const stats=walk.components.map(comp=>{let vol=0,area=0;for(const fi of comp){const f=mesh.faces[fi],a=mesh.vertices[f[0]],b=mesh.vertices[f[1]],c=mesh.vertices[f[2]];vol+=faceVol(a,b,c);area+=triArea(a,b,c);}return{faceCount:comp.length,volume:Math.abs(vol),surfaceArea:area};});
+  let domIdx=0; for(let i=1;i<stats.length;i++){if(stats[i].faceCount>stats[domIdx].faceCount||(stats[i].faceCount===stats[domIdx].faceCount&&stats[i].volume>stats[domIdx].volume))domIdx=i;}
+  const dom=stats[domIdx],keep=new Set(); let rc=0,rf=0;
+  for(let i=0;i<walk.components.length;i++){const s=stats[i],comp=walk.components[i],kt=i===domIdx||s.faceCount>=dom.faceCount*FRAG_TRI||(dom.volume>VTOL&&s.volume>=dom.volume*FRAG_VOL);if(kt)comp.forEach(fi=>keep.add(fi));else{rc++;rf+=comp.length;}}
+  if(!rc)return{removedComponents:0,removedFaces:0};
+  mesh.faces=mesh.faces.filter((_,fi)=>keep.has(fi)); return{removedComponents:rc,removedFaces:rf};
+}
+
+function loopNormal(pts){let n=[0,0,0];for(let i=0;i<pts.length;i++){const c=pts[i],nx=pts[(i+1)%pts.length];n=add3(n,[(c[1]-nx[1])*(c[2]+nx[2]),(c[2]-nx[2])*(c[0]+nx[0]),(c[0]-nx[0])*(c[1]+nx[1])]);}return vnrm(n);}
+
+function findBoundaryLoops(edgeMap){
+  const out=new Map(),unused=new Set(),loops=[];
+  for(const edge of edgeMap.values()){if(edge.refs.length!==1)continue;const ref=edge.refs[0],s=ref.dir===1?edge.a:edge.b,en=ref.dir===1?edge.b:edge.a,key=`${s}|${en}`;unused.add(key);if(!out.has(s))out.set(s,[]);out.get(s).push({start:s,end:en,key});}
+  for(const key of Array.from(unused)){
+    if(!unused.has(key))continue;
+    const[st,et]=key.split('|'); let s=Number(st),cur=Number(et),prev=s;
+    const loop=[s];unused.delete(key);
+    while(cur!==s&&loop.length<=edgeMap.size+2){loop.push(cur);const cands=out.get(cur)||[];const nx=cands.find(e=>unused.has(e.key)&&e.end!==prev)||cands.find(e=>unused.has(e.key));if(!nx)break;unused.delete(nx.key);prev=cur;cur=nx.end;}
+    if(cur===s&&loop.length>=3)loops.push(loop);
+  }
+  return loops;
+}
+
+function repairBoundaryLoops(mesh){
+  const topo=buildAdjacency(mesh.faces),loops=findBoundaryLoops(topo.edgeMap);
+  if(!loops.length)return{repairedLoops:0,attemptedLoops:0};
+  let rep=0; const att=Math.min(loops.length,HOLE_LIMIT);
+  for(let i=0;i<att;i++){
+    const loop=loops[i],pts=loop.map(vi=>mesh.vertices[vi]),normal=loopNormal(pts);
+    const centroid=pts.reduce((s,p)=>add3(s,p),[0,0,0]),center=scale3(centroid,1/pts.length);
+    const pd=pts.reduce((mx,p)=>Math.max(mx,Math.abs(dot3(vsub(p,center),normal))),0);
+    if(pd>1e-4)continue;
+    const ci=mesh.vertices.length; mesh.vertices.push(center);
+    for(let j=0;j<loop.length;j++)mesh.faces.push([loop[(j+1)%loop.length],loop[j],ci]);
+    rep++;
+  }
+  return{repairedLoops:rep,attemptedLoops:att};
+}
+
+function computeScore(issues){let s=100;s-=Math.min(issues.boundaryEdgeCount*2,36);s-=Math.min(issues.nonManifoldEdgeCount*18,32);s-=Math.min(issues.orientationConflicts*8,16);s-=Math.min(issues.remainingDegenerate*10,20);return Math.max(0,Math.round(s));}
+
+function validateAndRepair(model){
+  const mesh=meshFromModel(model);
+  const repairs=[];
+  if(mesh.collapsedTriangles)repairs.push(`${mesh.collapsedTriangles} collapsed triangles discarded during vertex welding.`);
+  const dg=removeDegenerateFaces(mesh); if(dg)repairs.push(`${dg} degenerate triangles removed.`);
+  const dup=removeDuplicateFaces(mesh); if(dup)repairs.push(`${dup} duplicate triangles removed.`);
+  const ori=repairOrientation(mesh); if(ori.flippedFaces)repairs.push(`${ori.flippedFaces} triangle windings corrected.`);
+  const frag=removeSmallFragments(mesh); if(frag.removedComponents)repairs.push(`${frag.removedComponents} fragments removed.`);
+  const hole=repairBoundaryLoops(mesh);
+  if(hole.repairedLoops){repairs.push(`${hole.repairedLoops} boundary loops repaired.`);const ori2=repairOrientation(mesh);if(ori2.flippedFaces)repairs.push(`${ori2.flippedFaces} additional windings corrected.`);}
+  const topo=buildAdjacency(mesh.faces),walk=walkComponents(topo.adjacency);
+  let remDegen=0; for(const f of mesh.faces){if(triArea(mesh.vertices[f[0]],mesh.vertices[f[1]],mesh.vertices[f[2]])<=ATOL)remDegen++;}
+  const issues={boundaryEdgeCount:topo.boundaryEdgeCount,nonManifoldEdgeCount:topo.nonManifoldEdgeCount,orientationConflicts:walk.orientationConflicts,remainingDegenerate:remDegen};
+  const certified=mesh.faces.length>0&&issues.boundaryEdgeCount===0&&issues.nonManifoldEdgeCount===0&&issues.orientationConflicts===0&&issues.remainingDegenerate===0;
+  const score=certified?100:computeScore(issues);
+
+  let vol=0,area=0;
+  for(const f of mesh.faces){const a=mesh.vertices[f[0]],b=mesh.vertices[f[1]],c=mesh.vertices[f[2]];vol+=faceVol(a,b,c);area+=triArea(a,b,c);}
+
+  const reportItems=certified?[
+    'Watertight mesh verified after validation and repair.',
+    'No non-manifold geometry detected in the repaired mesh.',
+    'Triangle winding normalized for export and slicer compatibility.',
+    repairs.length?`Repairs applied: ${repairs.join(' ')}`:'No repairs required; mesh passed on first validation run.',
+  ]:[
+    mesh.faces.length?'Geometry generated, but critical mesh issues remain.':'Empty mesh.',
+    issues.boundaryEdgeCount?`${issues.boundaryEdgeCount} open edges remain.`:'Watertight shell verified.',
+    issues.nonManifoldEdgeCount?`${issues.nonManifoldEdgeCount} non-manifold edge groups remain.`:'No non-manifold geometry.',
+    issues.orientationConflicts?`${issues.orientationConflicts} orientation conflicts remain.`:'No orientation conflicts.',
+    repairs.length?`Repairs applied: ${repairs.join(' ')}`:'No automatic repairs possible.',
+  ];
+
+  return{
+    pass:certified,score,mesh,
+    finalModel:meshToModel(mesh),
+    report:{
+      title:certified?'Certified Printable Mesh':'Mesh Repair Failed',
+      summary:certified?'Model validation complete. Certified printable and ready for export.':'Unable to certify. Adjust parameters and try again.',
+      items:reportItems,
+      metrics:{sourceTriangleCount:model.triangleCount,triangleCount:mesh.faces.length,vertexCount:mesh.vertices.length,surfaceArea:area,volume:Math.abs(vol),stlBytes:84+mesh.faces.length*50},
+      issues,
+    }
+  };
+}
+
+// ── Derived display ──
+function updateDerived(){
+  const D=parseFloat(R.inputs.D.value)||0,H=parseFloat(R.inputs.H.value)||0,W=parseFloat(R.inputs.W.value)||0,T=parseFloat(R.inputs.T.value)||0;
+  const id=D+T,od=id+2*W,th=TOP+H+T,gr=W/2,gz=th-TOP-gr;
+  R.derived.id.textContent=id.toFixed(3)+' mm'; R.derived.od.textContent=od.toFixed(3)+' mm';
+  R.derived.th.textContent=th.toFixed(3)+' mm'; R.derived.gz.textContent=gz.toFixed(3)+' mm';
+  R.derived.gr.textContent=gr.toFixed(3)+' mm';
+}
+
+// ── Validation UI ──
+function updateValUI(cert){
+  if(!cert){
+    R.valState.className='validation-state pending'; R.valState.textContent='Awaiting preview build';
+    R.valScore.textContent='--'; R.valSummary.textContent='Load a preview to validate, repair, and certify the mesh.';
+    R.certBadge.className='cert-badge pending'; R.certBadge.textContent='Certification Pending';
+    R.reportBtn.disabled=true; exportButtons.forEach(b=>{b.disabled=true;b.classList.remove('certified');}); return;
+  }
+  R.valState.className=`validation-state ${cert.pass?'success':'error'}`;
+  R.valState.textContent=cert.pass?'Model Validated':'Repair Failed';
+  R.valScore.textContent=`${cert.score}%`;
+  R.valSummary.textContent=cert.report.summary;
+  R.certBadge.className=`cert-badge ${cert.pass?'success':'error'}`;
+  R.certBadge.textContent=cert.pass?'Certified Printable':'Export Blocked';
+  R.reportBtn.disabled=false;
+  exportButtons.forEach(b=>{b.disabled=!cert.pass;b.classList.toggle('certified',cert.pass);});
+}
+
+function renderReport(cert){
+  if(!cert){R.reportTitle.textContent='No validated model yet';R.reportSummary.textContent='Build a preview to generate a printability report.';R.reportList.replaceChildren();R.reportStats.replaceChildren();return;}
+  R.reportTitle.textContent=cert.report.title;
+  R.reportSummary.textContent=cert.report.summary;
+  R.reportList.replaceChildren(...cert.report.items.map(item=>{
+    const row=document.createElement('div');row.className='report-item';
+    const mark=document.createElement('span');mark.className='report-item-mark';mark.textContent=cert.pass?'[OK]':'[!]';
+    const copy=document.createElement('span');copy.textContent=item;
+    row.append(mark,copy);return row;
+  }));
+  const m=cert.report.metrics;
+  const tLabel=m.sourceTriangleCount===m.triangleCount?'Triangle Count':'Preview / Export Triangles';
+  const tVal=m.sourceTriangleCount===m.triangleCount?m.triangleCount.toLocaleString():`${m.sourceTriangleCount.toLocaleString()} / ${m.triangleCount.toLocaleString()}`;
+  const stats=[
+    [tLabel,tVal],
+    ['Surface Area',`${m.surfaceArea.toFixed(2)} mm²`],
+    ['Volume',`${m.volume.toFixed(2)} mm³`],
+    ['STL File Size',`${(m.stlBytes/1024).toFixed(1)} KB`],
+  ].map(([l,v])=>{const card=document.createElement('div');card.className='report-stat';const sl=document.createElement('div');sl.className='report-stat-label';sl.textContent=l;const sv=document.createElement('div');sv.className='report-stat-value';sv.textContent=v;card.append(sl,sv);return card;});
+  R.reportStats.replaceChildren(...stats);
+}
+
+// ── Export builders ──
+function buildSTLBuffer(model){
+  // Model is Z-up (same convention as original app.js) — export directly, no swap needed
+  const tc=model.positions.length/9,buf=new ArrayBuffer(84+tc*50),dv=new DataView(buf);
+  const hdr='CapGen Cylinder Cap'; for(let i=0;i<80;i++)dv.setUint8(i,i<hdr.length?hdr.charCodeAt(i):0);
+  dv.setUint32(80,tc,true); let off=84;
+  for(let i=0;i<model.positions.length;i+=9){
+    const a=[model.positions[i],  model.positions[i+1],model.positions[i+2]];
+    const b=[model.positions[i+3],model.positions[i+4],model.positions[i+5]];
+    const c=[model.positions[i+6],model.positions[i+7],model.positions[i+8]];
+    const n=triNormal(a,b,c);
+    dv.setFloat32(off,n[0],true);dv.setFloat32(off+4,n[1],true);dv.setFloat32(off+8,n[2],true);off+=12;
+    for(const v of[a,b,c]){dv.setFloat32(off,v[0],true);dv.setFloat32(off+4,v[1],true);dv.setFloat32(off+8,v[2],true);off+=12;}
+    dv.setUint16(off,0,true);off+=2;
+  }
+  return buf;
+}
+function buildOBJText(mesh){
+  const l=['# CapGen Cylinder Cap OBJ'];
+  for(const v of mesh.vertices) l.push(`v ${v[0]} ${v[1]} ${v[2]}`);
+  for(const f of mesh.faces)    l.push(`f ${f[0]+1} ${f[1]+1} ${f[2]+1}`);
+  return l.join('\n')+'\n';
+}
+function buildCrcTable(){const t=new Uint32Array(256);for(let i=0;i<256;i++){let v=i;for(let b=0;b<8;b++)v=(v&1)?(0xEDB88320^(v>>>1)):(v>>>1);t[i]=v>>>0;}return t;}
+const ENC=new TextEncoder(),CRCT=buildCrcTable();
+function crc32(bytes){let c=0xFFFFFFFF;for(let i=0;i<bytes.length;i++)c=CRCT[(c^bytes[i])&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
+function u8(s){return s instanceof Uint8Array?s:ENC.encode(s);}
+function createZip(entries){
+  const prep=entries.map(e=>({...e,nb:ENC.encode(e.name),db:u8(e.data),crc:0}));prep.forEach(e=>{e.crc=crc32(e.db);});
+  let ls=0,cs=0;prep.forEach(e=>{ls+=30+e.nb.length+e.db.length;cs+=46+e.nb.length;});
+  const buf=new ArrayBuffer(ls+cs+22),dv=new DataView(buf),bytes=new Uint8Array(buf);
+  let off=0;const cd=[];
+  function w16(v){dv.setUint16(off,v,true);off+=2;}function w32(v){dv.setUint32(off,v,true);off+=4;}
+  for(const e of prep){const lo=off;w32(0x04034B50);w16(20);w16(0);w16(0);w16(0);w16(0);w32(e.crc);w32(e.db.length);w32(e.db.length);w16(e.nb.length);w16(0);bytes.set(e.nb,off);off+=e.nb.length;bytes.set(e.db,off);off+=e.db.length;cd.push({...e,lo});}
+  const co=off;for(const e of cd){w32(0x02014B50);w16(20);w16(20);w16(0);w16(0);w16(0);w16(0);w32(e.crc);w32(e.db.length);w32(e.db.length);w16(e.nb.length);w16(0);w16(0);w16(0);w16(0);w32(0);w32(e.lo);bytes.set(e.nb,off);off+=e.nb.length;}
+  const cl=off-co;w32(0x06054B50);w16(0);w16(0);w16(prep.length);w16(prep.length);w32(cl);w32(co);w16(0);return buf;
+}
+function build3MF(mesh){
+  const vx=mesh.vertices.map(v=>`<vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join('');
+  const tx=mesh.faces.map(f=>`<triangle v1="${f[0]}" v2="${f[1]}" v3="${f[2]}"/>`).join('');
+  const mxml=`<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices>${vx}</vertices><triangles>${tx}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+  const rx=`<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
+  const cx=`<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>`;
+  return createZip([{name:'[Content_Types].xml',data:cx},{name:'_rels/.rels',data:rx},{name:'3D/3dmodel.model',data:mxml}]);
+}
+function sanitize(raw){return((raw||'').trim().replace(/\.(stl|obj|3mf)$/i,'').replace(/[<>:"/\\|?*\x00-\x1F]+/g,'_').replace(/\s+/g,'_').slice(0,80))||'cap_cyl';}
+function dlBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}
+
+// ── Arm-to-click buttons (same pattern as original) ──
+function setupArmButton(btn,action){
+  const s={armed:false,progress:0,start:0,frame:0,hovering:false,duration:16};
+  buttonArmState.set(btn,s);
+  const stop=(reset)=>{if(s.frame)cancelAnimationFrame(s.frame);s.frame=0;if(reset){s.progress=0;s.armed=false;s.start=0;}btn.style.setProperty('--charge',s.progress.toFixed(3));btn.classList.toggle('armed',s.armed);btn.classList.toggle('waiting',s.progress>0&&s.progress<1&&!s.armed);};
+  const tick=(now)=>{if(!s.hovering||btn.disabled){stop(true);return;}s.progress=Math.min(1,(now-s.start)/s.duration);if(s.progress>=1){s.armed=true;btn.style.setProperty('--charge','1');btn.classList.add('armed');s.frame=0;return;}btn.style.setProperty('--charge',s.progress.toFixed(3));s.frame=requestAnimationFrame(tick);};
+  const begin=()=>{if(btn.disabled||s.armed)return;s.hovering=true;s.start=performance.now();s.progress=0;stop(false);if(!s.frame)s.frame=requestAnimationFrame(tick);};
+  const reset=()=>{s.hovering=false;stop(true);};
+  btn.addEventListener('mouseenter',begin);btn.addEventListener('focus',begin);
+  btn.addEventListener('mouseleave',reset);btn.addEventListener('blur',reset);
+  btn.addEventListener('click',async(e)=>{
+    if(btn.disabled)return;
+    if(!s.armed){e.preventDefault();R.status.className='error';R.status.textContent='Hover over the button until the progress bar completes, then click.';return;}
+    s.hovering=false;stop(true);await action();
+  });
+}
+
+// ── Preview handler ──
+async function handlePreview(){
+  const allBtns=[R.pBtn,...exportButtons,R.reportBtn];
+  allBtns.forEach(b=>b.disabled=true);
+  R.status.className='loading'; R.status.textContent='Building preview mesh and validating printability.';
+  R.tbmsg.textContent='Building Preview'; R.tbdim.textContent=''; R.dot.classList.remove('on');
+  await new Promise(r=>setTimeout(r,20));
+
+  try{
+    const D=parseFloat(R.inputs.D.value),H=parseFloat(R.inputs.H.value);
+    const W=parseFloat(R.inputs.W.value),T=parseFloat(R.inputs.T.value);
+    if(!Number.isFinite(D)||D<3)throw new Error('Diameter must be ≥ 3 mm.');
+    if(!Number.isFinite(H)||H<2)throw new Error('Height must be ≥ 2 mm.');
+    if(!Number.isFinite(W)||W<0.4)throw new Error('Wall thickness must be ≥ 0.4 mm.');
+    if(!Number.isFinite(T)||T<0)throw new Error('Tolerance must be ≥ 0 mm.');
+
+    const t0=performance.now();
+    const sourceModel = buildCylModel(D,H,W,T);
+    if(!sourceModel.triangleCount)throw new Error('Current inputs produced no geometry.');
+
+    const cert = validateAndRepair(sourceModel);
+    cert.elapsed = ((performance.now()-t0)/1000).toFixed(2);
+    currentCert  = cert;
+    currentModel = cert.finalModel;
+
+    showPreview(sourceModel);
+    updateValUI(cert);
+    renderReport(cert);
+
+    const p=sourceModel.meta;
+    R.tbmsg.textContent = cert.pass
+      ?`${sourceModel.triangleCount.toLocaleString()} Preview · ${cert.report.metrics.triangleCount.toLocaleString()} Certified Export Ready`
+      :`${sourceModel.triangleCount.toLocaleString()} Triangles · Export Blocked`;
+    R.tbdim.textContent = `⌀${p.outer_d.toFixed(2)} × H${p.total_h.toFixed(2)} mm`;
+    R.dot.classList.toggle('on',cert.pass);
+    R.status.className=cert.pass?'success':'error';
+    R.status.textContent=cert.pass
+      ?`Preview ready in ${cert.elapsed}s · ${sourceModel.triangleCount.toLocaleString()} source triangles · ${cert.report.metrics.triangleCount.toLocaleString()} certified export triangles.`
+      :cert.report.summary;
+  }catch(err){
+    clearPreview(); currentCert=null; currentModel=null;
+    updateValUI(null); renderReport(null);
+    R.status.className='error'; R.status.textContent=`Preview failed: ${err.message}`;
+    R.tbmsg.textContent='Preview Failed'; R.tbdim.textContent='';
+    console.error(err);
+  }
+  allBtns.forEach(b=>b.disabled=false);
+  updateValUI(currentCert);
+}
+
+async function handleExport(fmt){
+  if(!currentCert||!currentCert.pass||!currentModel)return;
+  const allBtns=[R.pBtn,...exportButtons,R.reportBtn];
+  allBtns.forEach(b=>b.disabled=true);
+  R.status.className='loading'; R.status.textContent=`Preparing ${fmt.toUpperCase()} export.`;
+  await new Promise(r=>setTimeout(r,20));
+  try{
+    const base=sanitize(R.filename.value);
+    if(fmt==='stl'){
+      dlBlob(new Blob([buildSTLBuffer(currentModel)],{type:'application/sla'}),base+'.stl');
+      R.status.className='success'; R.status.textContent=`Saved ${base}.stl · Certified Printable.`;
+    }else if(fmt==='obj'){
+      dlBlob(new Blob([buildOBJText(currentCert.mesh)],{type:'text/plain'}),base+'.obj');
+      R.status.className='success'; R.status.textContent=`Saved ${base}.obj`;
+    }else if(fmt==='3mf'){
+      dlBlob(new Blob([build3MF(currentCert.mesh)],{type:'model/3mf'}),base+'.3mf');
+      R.status.className='success'; R.status.textContent=`Saved ${base}.3mf`;
+    }
+  }catch(err){R.status.className='error';R.status.textContent=`Export failed: ${err.message}`;console.error(err);}
+  allBtns.forEach(b=>b.disabled=false);
+  updateValUI(currentCert);
+}
+
+// ── Wire up ──
+setupArmButton(R.pBtn, handlePreview);
+setupArmButton(R.dBtn, ()=>handleExport('stl'));
+setupArmButton(R.objBtn, ()=>handleExport('obj'));
+setupArmButton(R.m3mfBtn, ()=>handleExport('3mf'));
+
+let cylPreviewTimer=null;
+Object.values(R.inputs).forEach(inp=>inp.addEventListener('input',()=>{
+  updateDerived();
+  currentCert=null; currentModel=null;
+  updateValUI(null);
+  if(R.reportDialog.open)R.reportDialog.close();
+  clearTimeout(cylPreviewTimer);
+  cylPreviewTimer=setTimeout(()=>{handlePreview();},280);
+}));
+
+R.reportBtn.addEventListener('click',()=>{if(currentCert){renderReport(currentCert);R.reportDialog.showModal();}});
+R.reportClose.addEventListener('click',()=>R.reportDialog.close());
+window.addEventListener('resize',resize);
+
+resize();
+updateDerived();
+R.status.textContent='';
+updateValUI(null);
+R.canvas.style.cursor='grab';
+R.tbmsg.textContent='Waiting for Preview';
+
+// Auto-build the default preview the first time the Cylinder tab is shown.
+let cylAutoPreviewed=false;
+window.__capgenShow = window.__capgenShow || {};
+window.__capgenShow.cyl=function(){ resize(); if(!cylAutoPreviewed){ cylAutoPreviewed=true; handlePreview(); } };
+
+requestAnimationFrame(renderLoop);
+})();
+</script>
 </body>
 </html>
